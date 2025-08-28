@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Verificando correo...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; display: grid; place-items: center; min-height: 100dvh; margin: 0; }
+    .card { max-width: 520px; padding: 24px; border: 1px solid #e5e5e5; border-radius: 12px; }
+    h2 { margin: 0 0 8px 0; }
+    p { margin: 4px 0; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Confirmando tu email…</h2>
+    <p>Un momento, por favor.</p>
+    <p id="status"></p>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    // ⚠️ Sustituye por tu proyecto (o inyecta desde el servidor si quieres)
+    const SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
+    const SUPABASE_ANON_KEY = "TU-ANON-KEY";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const el = document.getElementById("status");
+
+    async function run() {
+      try {
+        const hash = window.location.hash?.substring(1) || "";
+        const params = new URLSearchParams(hash);
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({ access_token, refresh_token });
+          el.textContent = "✅ Email verificado. Redirigiendo…";
+          // Redirige a tu app web (cámbialo a tu frontend real)
+          setTimeout(() => location.replace("/"), 1000);
+          return;
+        }
+
+        // Fallback por código (?code=...) si tu configuración lo usa
+        const q = new URLSearchParams(window.location.search);
+        const code = q.get("code");
+        if (code) {
+          await supabase.auth.exchangeCodeForSession({ authCode: code });
+          el.textContent = "✅ Email verificado. Redirigiendo…";
+          setTimeout(() => location.replace("/"), 1000);
+          return;
+        }
+
+        el.textContent = "⚠️ Enlace inválido o expirado.";
+      } catch (e) {
+        console.error(e);
+        el.textContent = "❌ Error al confirmar. Intenta iniciar sesión.";
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>
