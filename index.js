@@ -63,8 +63,13 @@ app.post("/auth/signup", async (req, res) => {
   }
 });
 
-// --- Página de callback de verificación (estático) ---
-app.use("/auth", express.static(path.join(__dirname, "public/auth")));
+app.use(
+  "/auth",
+  express.static(path.join(__dirname, "public/auth"), {
+    extensions: ["html"], // /auth/callback => callback.html
+    index: false
+  })
+);
 
 // --- Arranque ---
 app.listen(PORT, () => {
