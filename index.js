@@ -3,7 +3,6 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import env from "./src/utils/env.js";
-console.log("[SEC] CLIENT_ID =", JSON.stringify(env.CLIENT_ID));
 import { AIController } from "./src/controllers/ai.controller.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
@@ -29,7 +28,8 @@ app.post("/auth/token", requireClientSignature, (req, res) => {
 
 // Endpoints protegidos por JWT
 app.post("/upload-url", auth, AIController.uploadUrl);
-app.post("/process",    auth, AIController.process);
+app.post("/process-image", auth, AIController.processImage);
+app.post("/img2vid", auth, AIController.img2vid); 
 
 const PORT = env.PORT || 3000;
 app.listen(PORT, () => console.log(`API on :${PORT}`));
