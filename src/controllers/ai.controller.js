@@ -10,7 +10,7 @@ export const AIController = {
     if (error) return res.status(500).json({ error: error.message });
     res.json({ fileName, uploadUrl: data.signedUrl });
   },
-  
+
   // POST /process-image  { fileName, prompt? }
   async processImage(req, res) {
     try {
@@ -36,11 +36,7 @@ export const AIController = {
       const { imageUrl: rawUrl, fileName, duration, resolution, fps } = req.body || {};
       let imageUrl = rawUrl;
 
-      if (!imageUrl && fileName) {
-        const { data: signed, error } = await SupabaseService.getSignedReadUrl(fileName, 300);
-        if (error || !signed?.signedUrl) return res.status(404).json({ error: "Object not found" });
-        imageUrl = signed.signedUrl;
-      }
+      imageUrl = signed.signedUrl;
       if (!imageUrl) return res.status(400).json({ error: "imageUrl or fileName is required" });
 
       const videoUrl = await runSeedance({ imageUrl, duration, resolution, fps });
