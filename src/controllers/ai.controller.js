@@ -42,7 +42,7 @@ export const AIController = {
         : "clean sticker with white border, high contrast";
 
       console.log("REPLICATE run:", { prompt: finalPrompt });
-      const resultUrl = await runStickerModel(signed.signedUrl, finalPrompt);
+      const { url, id, web } = await runStickerModel(signed.signedUrl, finalPrompt);
       console.log("REPLICATE result:", resultUrl);
 
       // 3) Borrar original (best-effort)
@@ -50,7 +50,9 @@ export const AIController = {
       // if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
 
       // 4) Responder con la URL final
-      return res.json({ result: resultUrl });
+      return res.json({
+        result: { url, replicateId: id, web }
+      });
     } catch (e) {
       console.error("PROCESS exception:", e);
       return res.status(500).json({ error: e.message || "internal error" });
