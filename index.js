@@ -1,36 +1,35 @@
-import "dotenv/config";
+// index.js (fragmento relevante)
 import express from "express";
 import helmet from "helmet";
+import cors from "cors";
+import env from "./src/utils/env.js";
+console.log("[SEC] CLIENT_ID =", JSON.stringify(env.CLIENT_ID));
 import { AIController } from "./src/controllers/ai.controller.js";
-import { auth } from "./src/middlewares/auth.middleware.js";
 import { AuthService } from "./src/services/auth.service.js";
+import { auth } from "./src/middlewares/auth.middleware.js";
+import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
 
 const app = express();
 app.use(helmet());
-app.use(express.json({ limit: "5mb" }));
+app.use(cors());
 
-// Salud para verificar que NO es 502 por caída
+// Captura rawBody para firmar/verificar exactamente el body
+app.use(express.json({
+  limit: "5mb",
+  verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); }
+}));
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// === Emisión de token por X-App-Key (simple) ===
-app.post("/auth/token", (req, res) => {
-  const key = req.header("X-App-Key");
-  if (!key || key !== process.env.APP_KEY) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+// Solo tu app (HMAC) puede pedir un JWT
+app.post("/auth/token", requireClientSignature, (req, res) => {
   const token = AuthService.sign({ sub: "ivan", scope: ["stickers"] });
-  return res.json({ token, expiresIn: process.env.JWT_EXPIRES_IN || "15m" });
+  res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
 });
 
-// === Rutas protegidas ===
+// Endpoints protegidos por JWT
 app.post("/upload-url", auth, AIController.uploadUrl);
 app.post("/process",    auth, AIController.process);
 
-// Manejo de errores para evitar 502 silenciosos
-app.use((err, _req, res, _next) => {
-  console.error("UNCAUGHT:", err);
-  res.status(500).json({ error: "internal error" });
-});
-
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT || 3000;
 app.listen(PORT, () => console.log(`API on :${PORT}`));

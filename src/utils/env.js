@@ -3,29 +3,50 @@ import { config } from "dotenv";
 import { fileURLToPath } from "url";
 import path from "path";
 
-// Carga .env desde la raíz del proyecto (aiStickers_Backend/.env)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-config({ path: path.resolve(__dirname, "../../.env") });
+const envPath = path.resolve(__dirname, "../../.env");
 
-function req(name) {
-  const v = process.env[name];
-  if (!v || v.trim() === "") throw new Error(`${name} no definido en .env`);
-  return v;
-}
+// Cargar .env de forma explícita
+const r = config({ path: envPath });
+console.log("[ENV] loaded:", envPath, "ok:", !r.error);
+
+// Helper: lee y hace trim
+const get = (k, required = false) => {
+  const v = process.env[k];
+  const trimmed = typeof v === "string" ? v.trim() : v;
+  if (required && (!trimmed || trimmed === "")) {
+    console.warn(`[ENV] Missing ${k}`);
+  }
+  return trimmed;
+};
 
 const env = {
-  SUPABASE_URL: req("SUPABASE_URL"),
-  SUPABASE_SERVICE_ROLE_KEY: req("SUPABASE_SERVICE_ROLE_KEY"),
-  SUPABASE_BUCKET: process.env.SUPABASE_BUCKET || "photos",
+  // Supabase
+  SUPABASE_URL: get("SUPABASE_URL", true),
+  SUPABASE_SERVICE_ROLE_KEY: get("SUPABASE_SERVICE_ROLE_KEY", true),
+  SUPABASE_BUCKET: get("SUPABASE_BUCKET") || "photos",
 
-  REPLICATE_API_TOKEN: req("REPLICATE_API_TOKEN"),
+  // Replicate
+  REPLICATE_API_TOKEN: get("REPLICATE_API_TOKEN", true),
+  REPLICATE_MODEL: get("REPLICATE_MODEL") || "google/nano-banana",
 
-  APP_KEY: req("APP_KEY"),
-  JWT_SECRET: req("JWT_SECRET"),
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "15m",
+  // Auth / HMAC
+  CLIENT_ID: get("CLIENT_ID", true),
+  CLIENT_SECRET: get("CLIENT_SECRET"),
+  SIG_WINDOW_SEC: Number(get("SIG_WINDOW_SEC") || 300),
+
+  // JWT
+  APP_KEY: get("APP_KEY"),
+  JWT_SECRET: get("JWT_SECRET", true),
+  JWT_EXPIRES_IN: get("JWT_EXPIRES_IN") || "15m",
+
+  PORT: Number(get("PORT") || 3000),
+  PUBLIC_BASE_URL: get("PUBLIC_BASE_URL") || "",
 };
+
+console.log("[ENV] CLIENT_ID=", JSON.stringify(env.CLIENT_ID));
 
 export default env;
 export { env };
-export const ENV = env; // compat
+export const ENV = env;
