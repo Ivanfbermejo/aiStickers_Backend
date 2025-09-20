@@ -2,17 +2,11 @@
 import Replicate from "replicate";
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-const MODEL = process.env.REPLICATE_MODEL || "google/nano-banana"; // el que estás usando
+const MODEL = process.env.REPLICATE_MODEL || "google/nano-banana";
 
 export async function runStickerModel(imageUrl, prompt) {
-  // Resuelve la última versión para evitar 422
-  const m = await replicate.models.get(MODEL);
-  const version = m?.latest_version?.id;
-  if (!version) throw new Error(`Sin latest_version para ${MODEL}`);
-
   const pred = await replicate.predictions.create({
     model: MODEL,
-    version,
     input: {
       prompt,
       image_input: [imageUrl],     // <- este modelo usa image_input[]
