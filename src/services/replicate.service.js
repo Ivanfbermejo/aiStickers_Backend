@@ -7,17 +7,9 @@ const replicate = new Replicate({
 
 export async function runStickerModel(imageUrl, prompt) {
   try {
-    const prediction = await replicate.run(
-      "stability-ai/stable-diffusion:latest",
-      {
-        input: {
-          image: imageUrl,
-          prompt,
-          width: 512,
-          height: 512
-        }
-      }
-    );
+    const prediction = await replicate.run("google/nano-banana", {
+      input: { image: imageUrl, prompt }
+    });
 
     // prediction puede ser array o url según el modelo
     if (Array.isArray(prediction)) {
