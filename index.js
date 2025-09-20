@@ -2,7 +2,7 @@ import express from "express";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { AIController } from "./src/controllers/ai.controller.js";
-import { env } from "./utils/env.js";
+import { env } from "./src/utils/env.js";
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
