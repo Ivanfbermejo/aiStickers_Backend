@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { env } from "../utils/env.js";
+import env from "../utils/env.js";
 
 export const AuthService = {
   sign(payload, opts = {}) {
