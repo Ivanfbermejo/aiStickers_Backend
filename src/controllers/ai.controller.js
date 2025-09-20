@@ -43,14 +43,11 @@ export const AIController = {
       console.log("REPLICATE result:", { url, id, web }); // ✅ corregido
 
       // 3) No borramos el original por ahora
-      // const del = await SupabaseService.removeFile(fileName).catch(e => ({ error: e }));
-      // if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
+      const del = await SupabaseService.removeFile(fileName).catch(e => ({ error: e }));
+      if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
 
       // 4) Respuesta
-      return res.json({
-        result: { url, replicateId: id, web },
-        debug: { sentToReplicate: signed.signedUrl } // útil para verificar
-      });
+      return res.json({result: { url, replicateId: id, web }});
     } catch (e) {
       console.error("PROCESS exception:", e);
       return res.status(500).json({ error: e.message || "internal error" });
