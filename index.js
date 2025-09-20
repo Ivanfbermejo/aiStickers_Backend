@@ -1,5 +1,5 @@
 import express from "express";
-import env from "../utils/env.js";
+import env from "./src/utils/env.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { AIController } from "./src/controllers/ai.controller.js";
