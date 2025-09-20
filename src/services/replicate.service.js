@@ -8,7 +8,7 @@ const replicate = new Replicate({
 export async function runStickerModel(imageUrl, prompt) {
   try {
     const prediction = await replicate.run("google/nano-banana", {
-      input: { image: imageUrl, prompt }
+      input: { image_input: imageUrl, prompt }
     });
 
     // prediction puede ser array o url según el modelo
