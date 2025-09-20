@@ -1,7 +1,7 @@
 import express from "express";
-import { auth } from "./middlewares/auth.middleware.js";
-import { AuthService } from "./services/auth.service.js";
-import { AIController } from "./controllers/ai.controller.js";
+import { auth } from "./src/middlewares/auth.middleware.js";
+import { AuthService } from "./src/services/auth.service.js";
+import { AIController } from "./src/controllers/ai.controller.js";
 import { env } from "./utils/env.js";
 
 const app = express();
