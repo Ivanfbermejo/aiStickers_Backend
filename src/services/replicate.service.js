@@ -1,12 +1,31 @@
+// src/services/replicate.service.js
 import Replicate from "replicate";
-import { ENV } from "../utils/env.js";
 
-const replicate = new Replicate({ auth: ENV.REPLICATE_API_TOKEN });
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
+});
 
-export const ReplicateService = {
-  async runStickerModel(imageUrl, prompt) {
-    return await replicate.run("google/nano-banana", {
-      input: { image: imageUrl, prompt }
-    });
+export async function runStickerModel(imageUrl, prompt) {
+  try {
+    const prediction = await replicate.run(
+      "stability-ai/stable-diffusion:latest",
+      {
+        input: {
+          image: imageUrl,
+          prompt,
+          width: 512,
+          height: 512
+        }
+      }
+    );
+
+    // prediction puede ser array o url según el modelo
+    if (Array.isArray(prediction)) {
+      return prediction[0];
+    }
+    return prediction;
+  } catch (err) {
+    console.error("Replicate error:", err);
+    throw err;
   }
-};
+}
