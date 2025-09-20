@@ -36,21 +36,21 @@ export const AIController = {
       }
       console.log("SIGNED-READ ok:", { fileName, signedUrlPreview: signed.signedUrl.slice(0, 80) + "..." });
 
-      // 2) Llamar a Replicate (modelo definido en services/replicate.service.js)
-      const finalPrompt = prompt && String(prompt).trim().length > 0
-        ? prompt
-        : "clean sticker with white border, high contrast";
+      // // 2) Llamar a Replicate (modelo definido en services/replicate.service.js)
+      // const finalPrompt = prompt && String(prompt).trim().length > 0
+      //   ? prompt
+      //   : "clean sticker with white border, high contrast";
 
-      console.log("REPLICATE run:", { prompt: finalPrompt });
-      const resultUrl = await runStickerModel(signed.signedUrl, finalPrompt);
-      console.log("REPLICATE result:", resultUrl);
+      // console.log("REPLICATE run:", { prompt: finalPrompt });
+      // const resultUrl = await runStickerModel(signed.signedUrl, finalPrompt);
+      // console.log("REPLICATE result:", resultUrl);
 
-      // 3) Borrar original (best-effort)
-      const del = await SupabaseService.removeFile(fileName).catch(e => ({ error: e }));
-      if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
+      // // 3) Borrar original (best-effort)
+      // const del = await SupabaseService.removeFile(fileName).catch(e => ({ error: e }));
+      // if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
 
       // 4) Responder con la URL final
-      return res.json({ result: resultUrl });
+      return res.json({ result: signed.signedUrl });
     } catch (e) {
       console.error("PROCESS exception:", e);
       return res.status(500).json({ error: e.message || "internal error" });
