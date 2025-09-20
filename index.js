@@ -1,5 +1,4 @@
 import express from "express";
-import env from "./src/utils/env.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { AIController } from "./src/controllers/ai.controller.js";
@@ -10,10 +9,10 @@ app.use(express.json({ limit: "5mb" }));
 // Emitir token (solo si X-App-Key coincide)
 app.post("/auth/token", (req, res) => {
   const k = req.headers["x-app-key"];
-  if (!k || k !== env.APP_KEY) return res.status(401).json({ error: "Unauthorized" });
+  if (!k || k !== process.env.APP_KEY) return res.status(401).json({ error: "Unauthorized" });
   // payload mínimo; puedes meter un userId fijo si quieres
   const token = AuthService.sign({ sub: "ivan", scope: ["stickers"] });
-  return res.json({ token, expiresIn: env.JWT_EXPIRES_IN || "1h" });
+  return res.json({ token, expiresIn: process.env.JWT_EXPIRES_IN || "1h" });
 });
 
 // Rutas protegidas
