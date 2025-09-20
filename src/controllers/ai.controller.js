@@ -30,7 +30,7 @@ export const AIController = {
     }
   },
 
-  // POST /img2vid  { imageUrl? , fileName?, fps?, frames?, width?, height? }
+  // POST /img2vid  { imageUrl? }
   async img2vid(req, res) {
     try {
       const { imageUrl: rawUrl, fileName, duration, resolution, fps } = req.body || {};
@@ -39,7 +39,7 @@ export const AIController = {
       imageUrl = signed.signedUrl;
       if (!imageUrl) return res.status(400).json({ error: "imageUrl or fileName is required" });
 
-      const videoUrl = await runSeedance({ imageUrl, duration, resolution, fps });
+      const videoUrl = await runImageToVideo({ imageUrl });
       return res.json({ videoUrl });
     } catch (e) {
       console.error("img2vid:", e);
