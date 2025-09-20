@@ -3,13 +3,18 @@
     "version": "1.0.0",
     "type": "module",
     "main": "index.js",
+    "engines": {
+        "node": ">=20 <23"
+    },
     "scripts": {
         "start": "node index.js"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.57.4",
+        "cors": "^2.8.5",
         "dotenv": "^17.2.2",
         "express": "^4.21.2",
+        "helmet": "^8.1.0",
         "jsonwebtoken": "^9.0.2",
         "replicate": "^1.2.0"
     }

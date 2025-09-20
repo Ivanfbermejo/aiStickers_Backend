@@ -1,30 +1,31 @@
 // src/utils/env.js
-import "dotenv/config";
+import { config } from "dotenv";
+import { fileURLToPath } from "url";
+import path from "path";
 
-function num(v, d) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+// Carga .env desde la raíz del proyecto (aiStickers_Backend/.env)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+config({ path: path.resolve(__dirname, "../../.env") });
+
+function req(name) {
+  const v = process.env[name];
+  if (!v || v.trim() === "") throw new Error(`${name} no definido en .env`);
+  return v;
+}
 
 const env = {
-  NODE_ENV: process.env.NODE_ENV || "production",
-
-  // AUTH
-  JWT_SECRET: process.env.JWT_SECRET,
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "10m",
-
-  // HMAC opcional
-  CLIENT_ID: process.env.CLIENT_ID,
-  CLIENT_SECRET: process.env.CLIENT_SECRET,
-  SIG_WINDOW_SEC: num(process.env.SIG_WINDOW_SEC, 300),
-
-  // SUPABASE (ajusta a lo que uses)
-  SUPABASE_URL: process.env.SUPABASE_URL,
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-  SUPABASE_SERVICE_ROLE: process.env.SUPABASE_SERVICE_ROLE,
+  SUPABASE_URL: req("SUPABASE_URL"),
+  SUPABASE_SERVICE_ROLE_KEY: req("SUPABASE_SERVICE_ROLE_KEY"),
   SUPABASE_BUCKET: process.env.SUPABASE_BUCKET || "photos",
-};
 
-if (!env.JWT_SECRET) throw new Error("JWT_SECRET no definido");
+  REPLICATE_API_TOKEN: req("REPLICATE_API_TOKEN"),
+
+  APP_KEY: req("APP_KEY"),
+  JWT_SECRET: req("JWT_SECRET"),
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "15m",
+};
 
 export default env;
 export { env };
-// 👇 compatibilidad con imports antiguos `{ ENV }`
-export const ENV = env;
+export const ENV = env; // compat

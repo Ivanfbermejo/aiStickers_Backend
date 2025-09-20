@@ -1,17 +1,25 @@
+import env from "../utils/env.js";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(
+  env.SUPABASE_URL,
+  env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false } }
+);
+
+const BUCKET = env.SUPABASE_BUCKET;
 
 export const SupabaseService = {
-  async getSignedUploadUrl(fileName) {
-    return await supabase.storage.from(process.env.BUCKET).createSignedUploadUrl(fileName);
+  getSignedUploadUrl(fileName, expiresIn = 300) {
+    return supabase.storage.from(BUCKET).createSignedUploadUrl(fileName, expiresIn);
   },
-
-  async getSignedReadUrl(fileName, seconds = 300) {
-    return await supabase.storage.from(process.env.BUCKET).createSignedUrl(fileName, seconds);
+  getSignedReadUrl(fileName, expiresIn = 300) {
+    return supabase.storage.from(BUCKET).createSignedUrl(fileName, expiresIn);
   },
-
-  async removeFile(fileName) {
-    return await supabase.storage.from(process.env.BUCKET).remove([fileName]);
-  }
+  uploadBytes(fileName, bytes, contentType = "image/png") {
+    return supabase.storage.from(BUCKET).upload(fileName, bytes, { contentType, upsert: true });
+  },
+  removeFile(fileName) {
+    return supabase.storage.from(BUCKET).remove([fileName]);
+  },
 };

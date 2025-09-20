@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import { AIController } from "./src/controllers/ai.controller.js";
