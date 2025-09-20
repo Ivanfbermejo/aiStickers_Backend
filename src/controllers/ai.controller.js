@@ -50,7 +50,7 @@ export const AIController = {
       // if (del?.error) console.warn("REMOVE original warning:", del.error?.message);
 
       // 4) Responder con la URL final
-      return res.json({ result: signed.signedUrl });
+      return res.json({ result: resultUrl });
     } catch (e) {
       console.error("PROCESS exception:", e);
       return res.status(500).json({ error: e.message || "internal error" });
