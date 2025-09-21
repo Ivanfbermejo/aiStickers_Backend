@@ -30,20 +30,30 @@ export const AIController = {
     }
   },
 
-  // POST /img2vid  { imageUrl? }
   async img2vid(req, res) {
     try {
-      const { imageUrl: rawUrl, fileName, duration, resolution, fps } = req.body || {};
-      let imageUrl = rawUrl;
+      const { imageUrl, rawUrl, fileName, duration, resolution, fps, prompt } = req.body || {};
+      let url = (imageUrl || rawUrl || "").trim();
 
-      imageUrl = signed.signedUrl;
-      if (!imageUrl) return res.status(400).json({ error: "imageUrl or fileName is required" });
+      // Si te mandan una URL en fileName, trátala como URL
+      if (!url && fileName && /^https?:\/\//i.test(fileName)) {
+        url = fileName.trim();
+      }
 
-      const videoUrl = await runImageToVideo({ imageUrl });
+      // Si te mandan un nombre del bucket, firma lectura
+      if (!url && fileName) {
+        const { data, error } = await SupabaseService.getSignedReadUrl(fileName, 300);
+        if (error || !data?.signedUrl) return res.status(404).json({ error: "Object not found" });
+        url = data.signedUrl; // <-- NO uses 'signed' fuera de aquí
+      }
+
+      if (!url) return res.status(400).json({ error: "imageUrl or fileName is required" });
+
+      const videoUrl = await runImageToVideo({ imageUrl: url, prompt: prompt });
       return res.json({ videoUrl });
     } catch (e) {
       console.error("img2vid:", e);
       return res.status(500).json({ error: e.message || "internal error" });
     }
-  },
+  }
 };
