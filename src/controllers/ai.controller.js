@@ -1,42 +1,34 @@
 // src/controllers/ai.controller.js
-import { SupabaseService } from "../services/supabase.service.js";
 import { runStickerModel, runImageToVideo } from "../services/replicate.service.js";
 import { localstorage } from "../services/local.service.js";
 
+
+function uploadLocalUrl(req, res) {
+  
+
+  return res.json({
+    fileName: req.file.filename,
+    url
+  });
+}
+
 export const AIController = {
-  async uploadLocalUrl(req, res) {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    const url = localstorage.getPublicUrl(req.file.filename);
-
-    return res.json({
-      fileName: req.file.filename,
-      url
-    });
-  },
-
-  async uploadSuperbaseUrl(req, res) {
-    const fileName = `${crypto.randomUUID()}.png`;
-    const { data, error } = await SupabaseService.getSignedUploadUrl(fileName);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ fileName, uploadUrl: data.signedUrl });
-  },
 
   // POST /process-image  { fileName, prompt? }
   async processImage(req, res) {
     try {
-      const { fileName, prompt } = req.body || {};
-      if (!fileName) return res.status(400).json({ error: "fileName is required" });
+      const { prompt } = req.body || {};
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
 
-      const { data: signed, error } = await SupabaseService.getSignedReadUrl(fileName, 300);
-      if (error || !signed?.signedUrl) return res.status(404).json({ error: "Object not found" });
-
+      const signedUrl = localstorage.getPublicUrl(req.file.filename);
       const finalPrompt = (prompt?.trim()) || "clean sticker with white border, high contrast";
-      const { url: imageUrl, id, web } = await runStickerModel(signed.signedUrl, finalPrompt);
+
+      const { url: imageUrl, id, web } = await runStickerModel(signedUrl, finalPrompt);
 
       return res.json({ imageUrl, replicateId: id, web });
+
     } catch (e) {
       console.error("processImage:", e);
       return res.status(500).json({ error: e.message || "internal error" });
@@ -55,7 +47,7 @@ export const AIController = {
 
       // Si te mandan un nombre del bucket, firma lectura
       if (!url && fileName) {
-        const { data, error } = await SupabaseService.getSignedReadUrl(fileName, 300);
+        // const { data, error } = await SupabaseService.getSignedReadUrl(fileName, 300);
         if (error || !data?.signedUrl) return res.status(404).json({ error: "Object not found" });
         url = data.signedUrl; // <-- NO uses 'signed' fuera de aquí
       }

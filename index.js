@@ -31,8 +31,7 @@ app.post("/auth/token", requireClientSignature, (req, res) => {
 });
 
 // Endpoints protegidos por JWT
-app.post("/upload-url", upload.single("image") ,auth, AIController.uploadLocalUrl);
-app.post("/process-image", auth, AIController.processImage);
+app.post("/process-image", upload.single("image"), auth, AIController.processImage);
 app.post("/img2vid", auth, AIController.img2vid); 
 
 const PORT = env.PORT || 3000;

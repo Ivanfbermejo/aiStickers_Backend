@@ -1,5 +1,5 @@
 export const localstorage = {
     getPublicUrl(filename) {
-        return `/uploads/${filename}`;
+        return `https://animatedsticker.com/aistickers/${filename}`;
     }
 };
