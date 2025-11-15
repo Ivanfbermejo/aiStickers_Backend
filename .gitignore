@@ -3,6 +3,7 @@
 **/.env
 **/.env.*
 !.env.example
+**/public/uploads
 
 # macOS
 .DS_Store
