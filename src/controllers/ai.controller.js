@@ -1,10 +1,23 @@
 // src/controllers/ai.controller.js
-import crypto from "crypto";
 import { SupabaseService } from "../services/supabase.service.js";
 import { runStickerModel, runImageToVideo } from "../services/replicate.service.js";
+import { localstorage } from "../services/local.service.js";
 
 export const AIController = {
-  async uploadUrl(req, res) {
+  async uploadLocalUrl(req, res) {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const url = localstorage.getPublicUrl(req.file.filename);
+
+    return res.json({
+      fileName: req.file.filename,
+      url
+    });
+  },
+
+  async uploadSuperbaseUrl(req, res) {
     const fileName = `${crypto.randomUUID()}.png`;
     const { data, error } = await SupabaseService.getSignedUploadUrl(fileName);
     if (error) return res.status(500).json({ error: error.message });

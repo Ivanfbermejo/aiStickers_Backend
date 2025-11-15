@@ -2,12 +2,17 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import path from "path";
 import env from "./src/utils/env.js";
+import { fileURLToPath } from "url";
 import { AIController } from "./src/controllers/ai.controller.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
+import { upload } from "./src/middlewares/local.middleware.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 app.use(helmet());
 app.use(cors());
@@ -17,8 +22,7 @@ app.use(express.json({
   limit: "5mb",
   verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); }
 }));
-
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use('/uploads', express.static(path.join(__dirname, './src/public/uploads')));
 
 // Solo tu app (HMAC) puede pedir un JWT
 app.post("/auth/token", requireClientSignature, (req, res) => {
@@ -27,7 +31,7 @@ app.post("/auth/token", requireClientSignature, (req, res) => {
 });
 
 // Endpoints protegidos por JWT
-app.post("/upload-url", auth, AIController.uploadUrl);
+app.post("/upload-url", upload.single("image") ,auth, AIController.uploadLocalUrl);
 app.post("/process-image", auth, AIController.processImage);
 app.post("/img2vid", auth, AIController.img2vid); 
 
