@@ -1,16 +1,7 @@
 // src/controllers/ai.controller.js
 import { runStickerModel, runImageToVideo } from "../services/replicate.service.js";
 import { localstorage } from "../services/local.service.js";
-
-
-function uploadLocalUrl(req, res) {
-  
-
-  return res.json({
-    fileName: req.file.filename,
-    url
-  });
-}
+import { deleteUrl } from "../services/local.service.js";
 
 export const AIController = {
 
@@ -23,11 +14,12 @@ export const AIController = {
       }
 
       const signedUrl = localstorage.getPublicUrl(req.file.filename);
-      const finalPrompt = (prompt?.trim()) || "clean sticker with white border, high contrast";
+      const finalPrompt = (prompt?.trim()) || "512x512 realistic-style sticker. Clean sticker with a white border. High contrast. Everything outside the sticker silhouette must be fully transparent (PNG with alpha). Center the subject. Realistic design, simple shapes, smooth shading, clean edges. Add Christmas decorations to the person: Santa hat, small festive lights, small holly details. Overall sticker should look Christmas-themed. Crisp white outline, no backgroun";
+      
+      const { url: stickerUrl, id, web } = await runStickerModel(signedUrl, finalPrompt);
+      deleteUrl(req.file.filename);
 
-      const { url: imageUrl, id, web } = await runStickerModel(signedUrl, finalPrompt);
-
-      return res.json({ imageUrl, replicateId: id, web });
+      return res.json({ stickerUrl, replicateId: id, web });
 
     } catch (e) {
       console.error("processImage:", e);
