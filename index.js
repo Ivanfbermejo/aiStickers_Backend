@@ -6,6 +6,7 @@ import path from "path";
 import env from "./src/utils/env.js";
 import { fileURLToPath } from "url";
 import { AIController } from "./src/controllers/ai.controller.js";
+import { I18nController } from "./src/controllers/i18n.controller.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
@@ -29,6 +30,9 @@ app.post("/auth/token", requireClientSignature, (req, res) => {
   const token = AuthService.sign({ sub: "ivan", scope: ["stickers"] });
   res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
 });
+
+// Endpoint de traducciones (protegido)
+app.get("/translations/:lang", auth, I18nController.getTranslations);
 
 // Endpoints protegidos por JWT
 app.post("/process-image", upload.single("image"), auth, AIController.processImage);

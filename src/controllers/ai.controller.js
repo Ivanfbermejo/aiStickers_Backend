@@ -16,8 +16,11 @@ export const AIController = {
       const signedUrl = localstorage.getPublicUrl(req.file.filename);
       const finalPrompt = (prompt?.trim()) || "512x512 realistic-style sticker. Clean sticker with a white border. High contrast. Everything outside the sticker silhouette must be fully transparent (PNG with alpha). Center the subject. Realistic design, simple shapes, smooth shading, clean edges. Add Christmas decorations to the person: Santa hat, small festive lights, small holly details. Overall sticker should look Christmas-themed. Crisp white outline, no backgroun";
       
-      const { url: stickerUrl, id, web } = await runStickerModel(signedUrl, finalPrompt);
-      deleteUrl(req.file.filename);
+      //const { url: stickerUrl, id, web } = await runStickerModel(signedUrl, finalPrompt);
+     deleteUrl(req.file.filename);
+     const stickerUrl = "https://animatedsticker.com/aistickers/824e1297-6ed1-4886-b7c9-910631790b6d.jpg"
+     const id = ""
+     const web = ""
 
       return res.json({ stickerUrl, replicateId: id, web });
 

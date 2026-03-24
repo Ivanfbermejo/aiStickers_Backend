@@ -43,6 +43,10 @@ const env = {
 
   PORT: Number(get("PORT") || 3000),
   PUBLIC_BASE_URL: get("PUBLIC_BASE_URL") || "",
+
+  // POEditor i18n
+  POEDITOR_API_TOKEN: get("POEDITOR_API_TOKEN", true),
+  POEDITOR_PROJECT_ID: get("POEDITOR_PROJECT_ID", true),
 };
 
 console.log("[ENV] CLIENT_ID=", JSON.stringify(env.CLIENT_ID));
