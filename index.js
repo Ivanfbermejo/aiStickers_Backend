@@ -51,12 +51,14 @@ app.get("/api/v1/packages", auth, (req, res) => {
   res.json({ packages: [] });
 });
 
-// Endpoint de balance de usuario
-app.get("/api/v1/users/:userId/balance", auth, (req, res) => {
-  console.log("💰 [BALANCE] Get balance endpoint llamado para userId:", req.params.userId);
+// Endpoint de balance de usuario (seguro - userID desde JWT)
+app.get("/api/v1/users/balance", auth, (req, res) => {
+  // Obtener userId desde el token JWT decodificado
+  const userId = req.user?.sub || "ivan"; // req.user viene del middleware auth
+  console.log("💰 [BALANCE] Get balance endpoint llamado para userId:", userId);
   res.json({ 
     success: true,
-    userId: req.params.userId,
+    userId: userId,
     balance: 100.0,
     currency: "USD",
     lastUpdated: new Date().toISOString()
