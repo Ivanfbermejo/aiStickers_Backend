@@ -6,6 +6,10 @@ import path from "path";
 import env from "./src/utils/env.js";
 import { fileURLToPath } from "url";
 import { AIController } from "./src/controllers/ai.controller.js";
+import { I18nController } from "./src/controllers/i18n.controller.js";
+import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
+import { SocialAuthController } from "./src/controllers/socialAuth.controller.js";
+import { GoogleMockController } from "./src/controllers/googleMock.controller.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
@@ -14,6 +18,56 @@ import { upload } from "./src/middlewares/local.middleware.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
+// Logs detallados para development
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEVELOPMENT_LOGS === 'true') {
+  console.log("🔍 Development logs enabled");
+  
+  // Middleware personalizado para logs HTTP (sin morgan)
+  app.use((req, res, next) => {
+    const startTime = Date.now();
+    const timestamp = new Date().toISOString();
+    const userAgent = req.get('User-Agent') || 'Unknown';
+    const ip = req.ip || req.connection.remoteAddress;
+    
+    console.log(`📝 [${timestamp}] ${req.method} ${req.url}`);
+    console.log(`   IP: ${ip} | User-Agent: ${userAgent}`);
+    console.log(`   Headers:`, JSON.stringify(req.headers, null, 2));
+    
+    // Log del body si existe
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+    }
+    
+    // Log de archivos si existen
+    if (req.file) {
+      console.log(`   File:`, req.file);
+    }
+    
+    // Capturar response para logging
+    const originalSend = res.send;
+    res.send = function(data) {
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      const responseTimestamp = new Date().toISOString();
+      
+      console.log(`📤 [${responseTimestamp}] Response ${res.statusCode} for ${req.method} ${req.url} (${duration}ms)`);
+      
+      // Log del response body (limitado para no ser muy verboso)
+      if (data && typeof data === 'string' && data.length < 500) {
+        console.log(`   Response:`, data);
+      } else if (data && typeof data === 'object') {
+        const responseStr = JSON.stringify(data, null, 2);
+        console.log(`   Response:`, responseStr.substring(0, 500) + (responseStr.length > 500 ? '...' : ''));
+      }
+      
+      return originalSend.call(this, data);
+    };
+    
+    next();
+  });
+}
+
 app.use(helmet());
 app.use(cors());
 
@@ -30,10 +84,44 @@ app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
   res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
 });
 
+// Endpoints de autenticación social (públicos)
+app.post("/api/v1/auth/google", SocialAuthController.authenticateWithGoogle);
+app.post("/api/v1/auth/apple", SocialAuthController.authenticateWithApple);
+app.post("/api/v1/auth/refresh", auth, SocialAuthController.refreshPaymentToken);
+app.get("/api/v1/auth/verify", auth, SocialAuthController.verifyToken);
+
+// Endpoints mock de Google para testing (solo en desarrollo)
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK === 'true') {
+  console.log("🧪 Mock endpoints enabled for testing");
+  
+  // Página de login mock de Google
+  app.get("/mock/google/auth", GoogleMockController.handleMockAuthPage);
+  app.post("/mock/google/select-user", GoogleMockController.handleMockUserSelection);
+  
+  // Endpoints OAuth 2.0 mock
+  app.post("/oauth2/v4/token", GoogleMockController.handleMockTokenExchange);
+  app.get("/oauth2/v2/userinfo", GoogleMockController.handleMockUserInfo);
+  
+  // APIs de testing
+  app.get("/api/v1/mock/google/test-token", GoogleMockController.handleTestToken);
+  app.get("/api/v1/mock/google/users", GoogleMockController.handleMockUsers);
+  app.post("/api/v1/mock/google/users", GoogleMockController.handleCreateMockUser);
+}
+
+// Endpoint de traducciones (protegido)
+app.get("/translations/:lang", auth, I18nController.getTranslations);
+
+// Endpoints de PaymentCore (protegidos)
+app.post("/api/v1/payments/validate/google-play", auth, PaymentCoreController.validateGooglePlayPurchase);
+app.post("/api/v1/payments/validate/apple-app-store", auth, PaymentCoreController.validateApplePurchase);
+app.get("/api/v1/users/:userId/balance", auth, PaymentCoreController.getBalance);
+app.post("/api/v1/fraud/analyze", auth, PaymentCoreController.analyzeFraud);
+app.get("/api/v1/packages", auth, PaymentCoreController.getPackages);
+
 // Endpoints protegidos por JWT
 app.post("/api/v1/ai/upload-url", upload.single("image"), auth, AIController.uploadLocalUrl);
 app.post("/api/v1/ai/process-image", auth, AIController.processImage);
-app.post("/api/v1/ai/img2vid", auth, AIController.img2vid); 
+app.post("/api/v1/ai/img2vid", auth, AIController.img2vid);
 
 // Endpoints de stickers y paquetes
 app.get("/api/v1/packages", auth, (req, res) => {
@@ -93,7 +181,6 @@ const PORT = env.PORT || 3000;
 console.log("🚀 aiStickers Backend v2.0.0 - API with /api/v1/ endpoints");
 console.log("🔍 Endpoints disponibles:");
 console.log("  🔐 POST /api/v1/auth/token");
-console.log("  🔧 POST /api/v1/auth/token-debug (TEMPORAL)");
 console.log("  🤖 POST /api/v1/ai/process-image");
 console.log("  📦 GET /api/v1/packages");
 console.log("  🧪 GET /api/v1/mock/google/test-token");

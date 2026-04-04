@@ -43,6 +43,23 @@ const env = {
 
   PORT: Number(get("PORT") || 3000),
   PUBLIC_BASE_URL: get("PUBLIC_BASE_URL") || "",
+
+  // POEditor i18n
+  POEDITOR_API_TOKEN: get("POEDITOR_API_TOKEN", true),
+  POEDITOR_PROJECT_ID: get("POEDITOR_PROJECT_ID", true),
+
+  // PaymentCore
+  GOOGLE_PLAY_PUBLIC_KEY: get("GOOGLE_PLAY_PUBLIC_KEY"),
+  APPLE_APP_STORE_SECRET: get("APPLE_APP_STORE_SECRET"),
+  PAYMENT_ENCRYPTION_KEY: get("PAYMENT_ENCRYPTION_KEY"),
+
+  // Social Authentication
+  GOOGLE_CLIENT_ID: get("GOOGLE_CLIENT_ID", true),
+  APPLE_CLIENT_ID: get("APPLE_CLIENT_ID", true),
+
+  // Mock Services
+  ENABLE_MOCK: get("ENABLE_MOCK"),
+  ENABLE_DEVELOPMENT_LOGS: get("ENABLE_DEVELOPMENT_LOGS"),
 };
 
 console.log("[ENV] CLIENT_ID=", JSON.stringify(env.CLIENT_ID));
