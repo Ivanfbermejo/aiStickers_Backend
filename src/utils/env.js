@@ -56,6 +56,10 @@ const env = {
   // Social Authentication
   GOOGLE_CLIENT_ID: get("GOOGLE_CLIENT_ID", true),
   APPLE_CLIENT_ID: get("APPLE_CLIENT_ID", true),
+
+  // Mock Services
+  ENABLE_GOOGLE_MOCK: get("ENABLE_GOOGLE_MOCK"),
+  ENABLE_MOCK_RESPONSES: get("ENABLE_MOCK_RESPONSES"),
 };
 
 console.log("[ENV] CLIENT_ID=", JSON.stringify(env.CLIENT_ID));
