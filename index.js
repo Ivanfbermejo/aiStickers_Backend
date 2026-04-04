@@ -51,6 +51,31 @@ app.get("/api/v1/packages", auth, (req, res) => {
   res.json({ packages: [] });
 });
 
+// Endpoint de balance de usuario
+app.get("/api/v1/users/:userId/balance", auth, (req, res) => {
+  console.log("💰 [BALANCE] Get balance endpoint llamado para userId:", req.params.userId);
+  res.json({ 
+    success: true,
+    userId: req.params.userId,
+    balance: 100.0,
+    currency: "USD",
+    lastUpdated: new Date().toISOString()
+  });
+});
+
+// Endpoint de compra (mock)
+app.post("/api/v1/payments/purchase", auth, (req, res) => {
+  console.log("💳 [PURCHASE] Purchase endpoint llamado");
+  res.json({ 
+    success: true,
+    transactionId: "mock-transaction-" + Date.now(),
+    amount: 4.99,
+    newBalance: 95.01,
+    fraudFlags: [],
+    riskScore: 0.1
+  });
+});
+
 console.log("🚀 aiStickers Backend v2.0.0 - ULTRA SIMPLIFIED");
 console.log("🔐 POST /api/v1/auth/token (CON FIRMA HMAC)");
 console.log("🧪 GET /api/v1/mock/google/test-token");
