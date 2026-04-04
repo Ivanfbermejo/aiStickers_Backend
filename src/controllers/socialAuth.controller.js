@@ -1,4 +1,4 @@
-import { SocialAuthService } from "../services/socialAuth.service.js";
+import { socialAuthService } from "../services/socialAuth.service.js";
 
 export const SocialAuthController = {
   /**

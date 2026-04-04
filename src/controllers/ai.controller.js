@@ -17,7 +17,7 @@ export const AIController = {
       const finalPrompt = (prompt?.trim()) || "512x512 realistic-style sticker. Clean sticker with a white border. High contrast. Everything outside of sticker silhouette must be fully transparent (PNG with alpha). Center's subject. Realistic design, simple shapes, smooth shading, clean edges. Add Christmas decorations to person: Santa hat, small festive lights, small holly details. Overall sticker should look Christmas-themed. Crisp white outline, no backgroun";
       
       // Mock control para desarrollo/testing
-      if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_RESPONSES === 'true') {
+      if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK === 'true') {
         console.log("🧪 Using AI mock response");
         
         // Eliminar archivo temporal
@@ -84,7 +84,7 @@ export const AIController = {
       if (!url) return res.status(400).json({ error: "imageUrl or fileName is required" });
 
       // Mock control para desarrollo/testing
-      if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_RESPONSES === 'true') {
+      if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK === 'true') {
         console.log("🧪 Using AI img2vid mock response");
         
         const mockVideoResponses = [

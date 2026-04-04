@@ -1,4 +1,4 @@
-import { GoogleMockService } from "../services/googleMock.service.js";
+import { googleMockService } from "../services/googleMock.service.js";
 
 export const GoogleMockController = {
   /**
@@ -6,7 +6,7 @@ export const GoogleMockController = {
    */
   handleMockAuthPage(req, res) {
     try {
-      GoogleMockService.handleMockAuthRequest(req, res);
+      googleMockService.handleMockAuthRequest(req, res);
     } catch (error) {
       console.error("Mock auth page error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -18,7 +18,7 @@ export const GoogleMockController = {
    */
   handleMockUserSelection(req, res) {
     try {
-      GoogleMockService.handleMockUserSelection(req, res);
+      googleMockService.handleMockUserSelection(req, res);
     } catch (error) {
       console.error("Mock user selection error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -30,7 +30,7 @@ export const GoogleMockController = {
    */
   handleMockTokenExchange(req, res) {
     try {
-      GoogleMockService.handleMockTokenExchange(req, res);
+      googleMockService.handleMockTokenExchange(req, res);
     } catch (error) {
       console.error("Mock token exchange error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -42,7 +42,7 @@ export const GoogleMockController = {
    */
   handleMockUserInfo(req, res) {
     try {
-      GoogleMockService.handleMockUserInfo(req, res);
+      googleMockService.handleMockUserInfo(req, res);
     } catch (error) {
       console.error("Mock user info error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -55,13 +55,13 @@ export const GoogleMockController = {
   handleTestToken(req, res) {
     try {
       const { email } = req.query;
-      const testToken = GoogleMockService.generateTestToken(email);
+      const testToken = googleMockService.generateTestToken(email);
       
       res.json({
         success: true,
         testToken,
         expiresIn: '1h',
-        userInfo: GoogleMockService.getMockUser(email || 'test.user@gmail.com')
+        userInfo: googleMockService.getMockUser(email || 'test.user@gmail.com')
       });
     } catch (error) {
       res.status(400).json({
@@ -76,7 +76,7 @@ export const GoogleMockController = {
    */
   handleMockUsers(req, res) {
     try {
-      const users = GoogleMockService.getAllMockUsers();
+      const users = googleMockService.getAllMockUsers();
       
       res.json({
         success: true,
@@ -109,7 +109,7 @@ export const GoogleMockController = {
         });
       }
 
-      const newUser = GoogleMockService.createMockUser({ email, name, picture });
+      const newUser = googleMockService.createMockUser({ email, name, picture });
       
       res.json({
         success: true,

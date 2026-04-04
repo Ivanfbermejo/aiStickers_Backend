@@ -11,7 +11,7 @@ El servicio Google Mock permite probar la aplicación completa sin depender del 
 Agrega esta variable a tu archivo `.env`:
 
 ```bash
-ENABLE_GOOGLE_MOCK=true
+ENABLE_MOCK=true
 NODE_ENV=development
 ```
 
@@ -23,7 +23,7 @@ npm start
 
 Verás este mensaje en la consola:
 ```
-🧪 Google Mock endpoints enabled for testing
+🧪 Mock endpoints enabled for testing
 ```
 
 ## 🧪 Mock Endpoints Disponibles
@@ -284,7 +284,7 @@ class TestApplication : Application() {
 
 ```bash
 # Habilitar mock service
-ENABLE_GOOGLE_MOCK=true
+ENABLE_MOCK=true
 
 # Entorno de desarrollo
 NODE_ENV=development
@@ -373,9 +373,14 @@ if (BuildConfig.DEBUG) {
 ```kotlin
 @Test
 fun testCompletePaymentFlow() = runTest {
+    // 1. Configurar mock
+    val mockService = GoogleMockServiceImpl(httpClient, "http://localhost:3000", enabled = true)
+    
+    // 2. Ejecutar flujo completo
     val mockExample = MockPaymentExample(/* dependencies */)
     val result = mockExample.runCompleteTestFlow()
     
+    // 3. Verificar resultados
     assertTrue(result.isSuccess)
     val flowResult = result.getOrThrow()
     assertTrue(flowResult.success)
@@ -412,9 +417,9 @@ DEBUG=google-mock npm start
 
 **1. Mock no habilitado:**
 ```
-Error: Google Mock service is not enabled
+Error: Mock service is not enabled
 ```
-**Solución:** Agregar `ENABLE_GOOGLE_MOCK=true` al `.env`
+**Solución:** Agregar `ENABLE_MOCK=true` al `.env`
 
 **2. Token expirado:**
 ```

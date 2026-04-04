@@ -11,7 +11,7 @@ El servicio AI Mock permite probar los endpoints de generación de stickers y vi
 Agrega esta variable a tu archivo `.env`:
 
 ```bash
-ENABLE_MOCK_RESPONSES=true
+ENABLE_MOCK=true
 NODE_ENV=development
 ```
 
@@ -99,21 +99,18 @@ const mockVideoResponses = [
 ### Variables de Entorno
 
 ```bash
-# Habilitar mocks de AI
-ENABLE_MOCK_RESPONSES=true
+# Habilitar todos los mocks
+ENABLE_MOCK=true
 
 # Entorno de desarrollo (también habilita mocks)
 NODE_ENV=development
-
-# Habilitar mock específico de Google
-ENABLE_GOOGLE_MOCK=true
 ```
 
 ### Lógica de Activación
 
 ```javascript
 // Los mocks se activan cuando:
-if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK_RESPONSES === 'true') {
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_MOCK === 'true') {
   // Usar respuesta mock
   console.log("🧪 Using AI mock response");
 } else {
@@ -170,24 +167,22 @@ curl -X POST http://localhost:3000/img2vid \
 ### 1. Desarrollo Rápido
 ```bash
 # Activar todos los mocks
-ENABLE_MOCK_RESPONSES=true
-ENABLE_GOOGLE_MOCK=true
+ENABLE_MOCK=true
 npm start
 ```
 
 ### 2. Testing Parcial
 ```bash
-# Solo mock de AI, Google real
-ENABLE_MOCK_RESPONSES=true
-# ENABLE_GOOGLE_MOCK=false (no definir)
+# Solo mocks (AI + Google), sin entorno desarrollo
+ENABLE_MOCK=true
+NODE_ENV=production
 npm start
 ```
 
 ### 3. Testing de Integración
 ```bash
 # Deshabilitar mocks para testing real
-ENABLE_MOCK_RESPONSES=false
-ENABLE_GOOGLE_MOCK=false
+ENABLE_MOCK=false
 NODE_ENV=production
 npm start
 ```
@@ -258,7 +253,7 @@ if (prompt.toLowerCase().includes('christmas')) {
 ```javascript
 describe('AI Controller Mock', () => {
   beforeEach(() => {
-    process.env.ENABLE_MOCK_RESPONSES = 'true';
+    process.env.ENABLE_MOCK = 'true';
   });
 
   test('should return mock sticker response', async () => {
@@ -347,13 +342,12 @@ El sistema puede incluir métricas:
 
 ## 🎉 Integración con otros Mocks
 
-El AI Mock funciona perfectamente con otros mocks del sistema:
+El AI Mock funciona perfectamente con el mock unificado del sistema:
 
 ```bash
 # Activar todos los mocks para desarrollo completo
-ENABLE_GOOGLE_MOCK=true      # Mock de Google Sign-In
-ENABLE_MOCK_RESPONSES=true   # Mock de AI (stickers/videos)
-NODE_ENV=development         # Habilita todos los mocks
+ENABLE_MOCK=true      # Mock de Google Sign-In + AI (stickers/videos)
+NODE_ENV=development   # Habilita todos los mocks
 ```
 
 **Flujo completo mock:**

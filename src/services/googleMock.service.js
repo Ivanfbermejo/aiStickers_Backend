@@ -309,4 +309,4 @@ class GoogleMockService {
   }
 }
 
-export const GoogleMockService = new GoogleMockService();
+export const googleMockService = new GoogleMockService();

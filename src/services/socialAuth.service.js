@@ -1,10 +1,11 @@
 import jwt from 'jsonwebtoken';
 import fetch from 'node-fetch';
-import { OAuth2Client } from 'google-auth-library';
 
 class SocialAuthService {
   constructor() {
-    this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    // Temporarily disabled until google-auth-library is installed
+    this.googleClient = null;
+    console.log("⚠️ Google Auth Library not installed - using mock verification");
   }
 
   /**
@@ -12,31 +13,27 @@ class SocialAuthService {
    */
   async authenticateWithGoogle(idToken) {
     try {
-      // 1. Verificar token con Google
-      const ticket = await this.googleClient.verifyIdToken({
-        idToken,
-        audience: process.env.GOOGLE_CLIENT_ID
-      });
-
-      const payload = ticket.getPayload();
+      // 1. Verificar token con Google (temporalmente mock hasta instalar google-auth-library)
+      let userInfo;
       
-      if (!payload) {
-        throw new Error('Invalid Google token payload');
+      if (process.env.ENABLE_MOCK === 'true' || process.env.NODE_ENV === 'development') {
+        // Mock verification para desarrollo
+        userInfo = this.mockGoogleTokenVerification(idToken);
+      } else {
+        // Verificación real (descomentar cuando google-auth-library esté instalado)
+        throw new Error("Google Auth Library not installed - Please run: npm install google-auth-library");
       }
 
-      // 2. Extraer información del usuario
-      const userInfo = {
-        id: payload.sub,
-        email: payload.email,
-        name: payload.name,
-        picture: payload.picture,
+      // 2. Buscar o crear usuario
+      const user = await this.findOrCreateUser({
+        id: userInfo.sub,
+        email: userInfo.email,
+        name: userInfo.name,
+        picture: userInfo.picture,
         provider: 'google'
-      };
+      });
 
-      // 3. Crear o actualizar usuario en nuestro sistema
-      const user = await this.findOrCreateUser(userInfo);
-
-      // 4. Generar nuestro JWT para pagos
+      // 3. Generar nuestro JWT para pagos
       const paymentToken = this.generatePaymentJWT(user);
 
       return {
@@ -199,6 +196,23 @@ class SocialAuthService {
     // En implementación real: UPDATE users SET last_login_at = NOW() WHERE id = ?
     console.log(`Updating last login for user: ${userId}`);
   }
+
+  /**
+   * Mock verification para desarrollo
+   */
+  mockGoogleTokenVerification(idToken) {
+    // Simular payload de Google token
+    return {
+      sub: 'google_mock_user_1',
+      email: 'test.user@gmail.com',
+      name: 'Test User',
+      picture: 'https://via.placeholder.com/150/150/4285F4/FFFFFF?text=Test',
+      email_verified: true,
+      iss: 'https://accounts.google.com',
+      aud: process.env.GOOGLE_CLIENT_ID,
+      exp: Math.floor(Date.now() / 1000) + 3600
+    };
+  }
 }
 
-export const SocialAuthService = new SocialAuthService();
+export const socialAuthService = new SocialAuthService();
