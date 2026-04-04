@@ -47,6 +47,15 @@ const env = {
   // POEditor i18n
   POEDITOR_API_TOKEN: get("POEDITOR_API_TOKEN", true),
   POEDITOR_PROJECT_ID: get("POEDITOR_PROJECT_ID", true),
+
+  // PaymentCore
+  GOOGLE_PLAY_PUBLIC_KEY: get("GOOGLE_PLAY_PUBLIC_KEY"),
+  APPLE_APP_STORE_SECRET: get("APPLE_APP_STORE_SECRET"),
+  PAYMENT_ENCRYPTION_KEY: get("PAYMENT_ENCRYPTION_KEY"),
+
+  // Social Authentication
+  GOOGLE_CLIENT_ID: get("GOOGLE_CLIENT_ID", true),
+  APPLE_CLIENT_ID: get("APPLE_CLIENT_ID", true),
 };
 
 console.log("[ENV] CLIENT_ID=", JSON.stringify(env.CLIENT_ID));

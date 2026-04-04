@@ -7,6 +7,8 @@ import env from "./src/utils/env.js";
 import { fileURLToPath } from "url";
 import { AIController } from "./src/controllers/ai.controller.js";
 import { I18nController } from "./src/controllers/i18n.controller.js";
+import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
+import { SocialAuthController } from "./src/controllers/socialAuth.controller.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
@@ -31,8 +33,39 @@ app.post("/auth/token", requireClientSignature, (req, res) => {
   res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
 });
 
+// Endpoints de autenticación social (públicos)
+app.post("/api/v1/auth/google", SocialAuthController.authenticateWithGoogle);
+app.post("/api/v1/auth/apple", SocialAuthController.authenticateWithApple);
+app.post("/api/v1/auth/refresh", auth, SocialAuthController.refreshPaymentToken);
+app.get("/api/v1/auth/verify", auth, SocialAuthController.verifyToken);
+
+// Endpoints mock de Google para testing (solo en desarrollo)
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_GOOGLE_MOCK === 'true') {
+  console.log("🧪 Google Mock endpoints enabled for testing");
+  
+  // Página de login mock de Google
+  app.get("/mock/google/auth", GoogleMockController.handleMockAuthPage);
+  app.post("/mock/google/select-user", GoogleMockController.handleMockUserSelection);
+  
+  // Endpoints OAuth 2.0 mock
+  app.post("/oauth2/v4/token", GoogleMockController.handleMockTokenExchange);
+  app.get("/oauth2/v2/userinfo", GoogleMockController.handleMockUserInfo);
+  
+  // APIs de testing
+  app.get("/api/v1/mock/google/test-token", GoogleMockController.handleTestToken);
+  app.get("/api/v1/mock/google/users", GoogleMockController.handleMockUsers);
+  app.post("/api/v1/mock/google/users", GoogleMockController.handleCreateMockUser);
+}
+
 // Endpoint de traducciones (protegido)
 app.get("/translations/:lang", auth, I18nController.getTranslations);
+
+// Endpoints de PaymentCore (protegidos)
+app.post("/api/v1/payments/validate/google-play", auth, PaymentCoreController.validateGooglePlayPurchase);
+app.post("/api/v1/payments/validate/apple-app-store", auth, PaymentCoreController.validateApplePurchase);
+app.get("/api/v1/users/:userId/balance", auth, PaymentCoreController.getBalance);
+app.post("/api/v1/fraud/analyze", auth, PaymentCoreController.analyzeFraud);
+app.get("/api/v1/packages", auth, PaymentCoreController.getPackages);
 
 // Endpoints protegidos por JWT
 app.post("/process-image", upload.single("image"), auth, AIController.processImage);
