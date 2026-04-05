@@ -1,6 +1,9 @@
-import express from "express";
-import helmet from "helmet";
-import cors from "cors";
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+
 import env from "./src/utils/env.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
@@ -51,15 +54,103 @@ app.get("/api/v1/packages", auth, (req, res) => {
   res.json({ packages: [] });
 });
 
+// Endpoints de autenticación social (públicos)
+app.post("/api/v1/auth/google", (req, res) => {
+  console.log("🔍 [GOOGLE_AUTH] Google authentication endpoint llamado");
+  
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({
+      success: false,
+      error: "Google ID token is required"
+    });
+  }
+  
+  // Mock authentication para desarrollo
+  const mockUser = {
+    sub: "google_user_" + Math.random().toString(36).substr(2, 9),
+    email: "user@gmail.com",
+    name: "Google User",
+    picture: "https://via.placeholder.com/150"
+  };
+  
+  console.log("🔍 [GOOGLE_AUTH] Usuario autenticado:", mockUser.email);
+  
+  // Generar JWT token para el usuario
+  const userToken = jwt.sign(
+    { 
+      sub: mockUser.sub,
+      email: mockUser.email,
+      name: mockUser.name,
+      provider: 'google'
+    },
+    process.env.JWT_SECRET || 'your-secret-key',
+    { expiresIn: '24h' }
+  );
+  
+  res.json({
+    success: true,
+    user: mockUser,
+    token: userToken,
+    message: "Google authentication successful"
+  });
+});
+
+app.post("/api/v1/auth/apple", (req, res) => {
+  console.log("🍎 [APPLE_AUTH] Apple authentication endpoint llamado");
+  
+  const { identityToken, userInfo } = req.body;
+  if (!identityToken) {
+    return res.status(400).json({
+      success: false,
+      error: "Apple identity token is required"
+    });
+  }
+  
+  // Mock authentication para desarrollo
+  const mockUser = {
+    sub: "apple_user_" + Math.random().toString(36).substr(2, 9),
+    email: userInfo?.email || "user@icloud.com",
+    name: userInfo?.name || "Apple User"
+  };
+  
+  console.log("🍎 [APPLE_AUTH] Usuario autenticado:", mockUser.email);
+  
+  // Generar JWT token para el usuario
+  const userToken = jwt.sign(
+    { 
+      sub: mockUser.sub,
+      email: mockUser.email,
+      name: mockUser.name,
+      provider: 'apple'
+    },
+    process.env.JWT_SECRET || 'your-secret-key',
+    { expiresIn: '24h' }
+  );
+  
+  res.json({
+    success: true,
+    user: mockUser,
+    token: userToken,
+    message: "Apple authentication successful"
+  });
+});
+
 // Endpoint de balance de usuario (seguro - userID desde JWT)
 app.get("/api/v1/users/balance", auth, (req, res) => {
   // Obtener userId desde el token JWT decodificado
   const userId = req.user?.sub || "ivan"; // req.user viene del middleware auth
   console.log("💰 [BALANCE] Get balance endpoint llamado para userId:", userId);
+  
+  // Balance random para testing
+  const randomBalance = Math.floor(Math.random() * 100); // Entre 0 y 99
+  
+  console.log("💰 [BALANCE] Enviando balance random:", randomBalance, "para userId:", userId);
+  
   res.json({ 
     success: true,
     userId: userId,
-    balance: 100.0,
+    balance: randomBalance,
     currency: "USD",
     lastUpdated: new Date().toISOString()
   });
@@ -68,13 +159,29 @@ app.get("/api/v1/users/balance", auth, (req, res) => {
 // Endpoint de compra (mock)
 app.post("/api/v1/payments/purchase", auth, (req, res) => {
   console.log("💳 [PURCHASE] Purchase endpoint llamado");
+  
+  // Obtener datos del request
+  const { amount, price } = req.body || {};
+  console.log("💳 [PURCHASE] Purchase request:", amount, "🪙 for", price);
+  
+  // Simular proceso de compra y actualizar balance
+  // En un caso real, esto involucraría pasarelas de pago, etc.
+  const userId = req.user?.sub || "ivan";
+  
+  // Generar nuevo balance (simulando que se añade el amount)
+  const newBalance = Math.floor(Math.random() * 100) + parseInt(amount || 0);
+  
+  console.log("💳 [PURCHASE] Purchase successful! New balance:", newBalance, "🪙 para userId:", userId);
+  
   res.json({ 
     success: true,
-    transactionId: "mock-transaction-" + Date.now(),
-    amount: 4.99,
-    newBalance: 95.01,
-    fraudFlags: [],
-    riskScore: 0.1
+    userId: userId,
+    amount: amount || 0,
+    price: price || "0.00",
+    newBalance: newBalance,
+    currency: "USD",
+    transactionId: "txn_" + Date.now(),
+    timestamp: new Date().toISOString()
   });
 });
 
