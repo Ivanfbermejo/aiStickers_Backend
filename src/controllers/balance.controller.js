@@ -1,4 +1,4 @@
-import { BalanceService } from "../services/balance.service.js";
+import { BalanceService } from "../services/balance.simple.service.js";
 
 /**
  * Controller para operaciones de balance StickerDollars

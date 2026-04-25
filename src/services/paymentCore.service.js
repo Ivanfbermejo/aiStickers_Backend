@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { BalanceService } from './balance.service.js';
 import { PlanService } from './plan.service.js';
 
 class FraudDetectionService {
@@ -271,6 +270,5 @@ class PaymentValidationService {
 
 export const PaymentCoreService = {
   fraudDetection: new FraudDetectionService(),
-  paymentValidation: new PaymentValidationService(),
-  balanceService: new BalanceService()
+  paymentValidation: new PaymentValidationService()
 };

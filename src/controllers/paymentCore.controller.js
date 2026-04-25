@@ -1,5 +1,5 @@
 import { PaymentCoreService } from "../services/paymentCore.service.js";
-import { BalanceService } from "../services/balance.service.js";
+import { BalanceService } from "../services/balance.simple.service.js";
 import { PlanService } from "../services/plan.service.js";
 
 export const PaymentCoreController = {

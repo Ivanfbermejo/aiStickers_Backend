@@ -6,6 +6,7 @@ import crypto from 'crypto';
 
 import env from "./src/utils/env.js";
 import { AuthService } from "./src/services/auth.service.js";
+import { BalanceService } from "./src/services/balance.simple.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
 import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
 import { BalanceController } from "./src/controllers/balance.controller.js";
