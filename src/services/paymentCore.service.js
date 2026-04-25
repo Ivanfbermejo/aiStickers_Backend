@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { BalanceService } from './balance.service.js';
+import { PlanService } from './plan.service.js';
 
 class FraudDetectionService {
   constructor() {
@@ -257,14 +259,8 @@ class PaymentValidationService {
   }
 
   getAmountFromPackage(productId) {
-    // Mapeo de productos a montos
-    const packages = {
-      'basic_pack_android': 4.99,
-      'premium_pack_android': 9.99,
-      'basic_pack_ios': 4.99,
-      'premium_pack_ios': 9.99
-    };
-    return packages[productId] || 0;
+    // Usar PlanService para obtener stickerCount (1 StickerDollar = 1 imagen)
+    return PlanService.getStickerCount(productId);
   }
 
   generateTransactionId() {
@@ -272,33 +268,6 @@ class PaymentValidationService {
   }
 }
 
-class BalanceService {
-  async addBalance(userId, amount, transactionId) {
-    // Implementar actualización de balance con optimistic locking
-    // Por ahora simulamos la operación
-    const currentBalance = await this.getCurrentBalance(userId);
-    const newBalance = currentBalance + amount;
-
-    await this.updateBalance(userId, newBalance, transactionId);
-
-    return {
-      userId,
-      balance: newBalance,
-      transactionId
-    };
-  }
-
-  async getCurrentBalance(userId) {
-    // Implementar consulta a base de datos
-    // Por ahora retornamos un valor simulado
-    return 100.0;
-  }
-
-  async updateBalance(userId, newBalance, transactionId) {
-    // Implementar actualización en base de datos con version control
-    console.log(`Updated balance for user ${userId}: ${newBalance} (tx: ${transactionId})`);
-  }
-}
 
 export const PaymentCoreService = {
   fraudDetection: new FraudDetectionService(),

@@ -7,6 +7,9 @@ import crypto from 'crypto';
 import env from "./src/utils/env.js";
 import { AuthService } from "./src/services/auth.service.js";
 import { auth } from "./src/middlewares/auth.middleware.js";
+import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
+import { BalanceController } from "./src/controllers/balance.controller.js";
+import { PlanController } from "./src/controllers/plan.controller.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
 
 const app = express();
@@ -185,9 +188,24 @@ app.post("/api/v1/payments/purchase", auth, (req, res) => {
   });
 });
 
+// Endpoints de validación de pagos (usan PaymentCoreController)
+app.post("/api/v1/payments/validate/google-play", auth, PaymentCoreController.validateGooglePlayPurchase);
+app.post("/api/v1/payments/validate/apple-app-store", auth, PaymentCoreController.validateApplePurchase);
+
+// Endpoint de planes de compra (usa PlanController)
+app.get("/api/v1/plans", auth, PlanController.getPlans);
+
+// Endpoints de balance (usan BalanceController)
+app.get("/api/v1/users/balance", auth, BalanceController.getBalance);
+app.post("/api/v1/users/balance/spend", auth, BalanceController.spendBalance);
+app.get("/api/v1/users/balance/history", auth, BalanceController.getTransactionHistory);
+
 console.log("🚀 aiStickers Backend v2.0.0 - ULTRA SIMPLIFIED");
 console.log("🔐 POST /api/v1/auth/token (CON FIRMA HMAC)");
 console.log("🧪 GET /api/v1/mock/google/test-token");
+console.log("📋 GET /api/v1/plans (Purchase Plans)");
+console.log("📦 POST /api/v1/payments/validate/google-play (Google Play validation)");
+console.log("🍎 POST /api/v1/payments/validate/apple-app-store (Apple App Store validation)");
 
 const PORT = env.PORT || 22024;
 app.listen(PORT, () => {

@@ -1,4 +1,6 @@
 import { PaymentCoreService } from "../services/paymentCore.service.js";
+import { BalanceService } from "../services/balance.service.js";
+import { PlanService } from "../services/plan.service.js";
 
 export const PaymentCoreController = {
   async validateGooglePlayPurchase(req, res) {
@@ -49,18 +51,20 @@ export const PaymentCoreController = {
         });
       }
 
-      // 3. Actualizar balance
-      const updatedBalance = await PaymentCoreService.balanceService.addBalance(
-        userId,
-        validationResult.amount,
-        validationResult.transactionId
-      );
+      // 3. Actualizar balance en base de datos (SQLite)
+      const stickerCount = PlanService.getStickerCount(productId);
+      const updatedBalance = await BalanceService.addBalance(userId, stickerCount, {
+        transactionId: validationResult.transactionId,
+        productId: productId,
+        providerTransactionId: purchaseToken,
+        provider: 'GOOGLE_PLAY'
+      });
 
       // 4. Respuesta exitosa
       res.json({
         success: true,
         transactionId: validationResult.transactionId,
-        amount: validationResult.amount,
+        amount: stickerCount,
         newBalance: updatedBalance.balance,
         fraudFlags: fraudAnalysis.flags,
         riskScore: fraudAnalysis.riskScore
@@ -123,18 +127,20 @@ export const PaymentCoreController = {
         });
       }
 
-      // 3. Actualizar balance
-      const updatedBalance = await PaymentCoreService.balanceService.addBalance(
-        userId,
-        validationResult.amount,
-        validationResult.transactionId
-      );
+      // 3. Actualizar balance en base de datos (SQLite)
+      const stickerCount = PlanService.getStickerCount(productId);
+      const updatedBalance = await BalanceService.addBalance(userId, stickerCount, {
+        transactionId: validationResult.transactionId,
+        productId: productId,
+        providerTransactionId: receiptData,
+        provider: 'APPLE_APP_STORE'
+      });
 
       // 4. Respuesta exitosa
       res.json({
         success: true,
         transactionId: validationResult.transactionId,
-        amount: validationResult.amount,
+        amount: stickerCount,
         newBalance: updatedBalance.balance,
         fraudFlags: fraudAnalysis.flags,
         riskScore: fraudAnalysis.riskScore
@@ -160,12 +166,14 @@ export const PaymentCoreController = {
         });
       }
 
-      const balance = await PaymentCoreService.balanceService.getCurrentBalance(userId);
+      const balance = await BalanceService.getBalance(userId);
+      const stats = await BalanceService.getUserStats(userId);
 
       res.json({
         success: true,
         userId,
         balance,
+        stats: stats || { sticker_dollars: balance, total_purchased: 0, total_spent: 0 },
         currency: "USD"
       });
 
