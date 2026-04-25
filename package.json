@@ -17,8 +17,6 @@
         "jsonwebtoken": "^9.0.2",
         "multer": "^2.0.2",
         "node-fetch": "^2.7.0",
-    "google-auth-library": "^9.0.0",
-    "sqlite3": "^5.1.6",
-    "sqlite": "^4.2.1"
+    "google-auth-library": "^9.0.0"
     }
 }
