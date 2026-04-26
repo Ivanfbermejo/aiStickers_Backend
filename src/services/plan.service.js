@@ -147,6 +147,34 @@ export class PlanService {
   }
   
   /**
+   * Obtiene nombre del plan por productId
+   * @param {string} productId
+   * @returns {string|null}
+   */
+  static getPlanName(productId) {
+    const plan = this.getPlanByProductId(productId);
+    return plan ? plan.name : null;
+  }
+  
+  /**
+   * Obtiene precio sugerido del plan por productId
+   * @param {string} productId
+   * @returns {number}
+   */
+  static getPlanPrice(productId) {
+    // Precios sugeridos (el precio real viene de Google Play)
+    const prices = {
+      'com.animatedsticker.aistickers.starter_10': 1.99,
+      'com.animatedsticker.aistickers.basic_25': 4.99,
+      'com.animatedsticker.aistickers.plus_60': 9.99,
+      'com.animatedsticker.aistickers.pro_150': 19.99,
+      'com.animatedsticker.aistickers.vip_400': 39.99
+    };
+    const normalizedId = productId.replace('.ios.', '.');
+    return prices[normalizedId] || 0;
+  }
+  
+  /**
    * Verifica si un productId es válido
    * @param {string} productId
    * @returns {boolean}

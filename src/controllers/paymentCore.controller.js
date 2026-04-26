@@ -1,6 +1,7 @@
 import { PaymentCoreService } from "../services/paymentCore.service.js";
 import { BalanceService } from "../services/balance.simple.service.js";
 import { PlanService } from "../services/plan.service.js";
+import { UserAssetsService } from "../services/userAssets.service.js";
 
 export const PaymentCoreController = {
   async validateGooglePlayPurchase(req, res) {
@@ -51,7 +52,7 @@ export const PaymentCoreController = {
         });
       }
 
-      // 3. Actualizar balance en base de datos (SQLite)
+      // 3. Actualizar balance en base de datos
       const stickerCount = PlanService.getStickerCount(productId);
       const updatedBalance = await BalanceService.addBalance(userId, stickerCount, {
         transactionId: validationResult.transactionId,
@@ -60,7 +61,19 @@ export const PaymentCoreController = {
         provider: 'GOOGLE_PLAY'
       });
 
-      // 4. Respuesta exitosa
+      // 4. Guardar paquete comprado en assets del usuario
+      await UserAssetsService.addPackage(userId, {
+        productId: productId,
+        name: PlanService.getPlanName(productId) || productId,
+        stickerCount: stickerCount,
+        price: validationResult.price || PlanService.getPlanPrice(productId) || 0,
+        currency: validationResult.currency || 'USD',
+        provider: 'GOOGLE_PLAY',
+        transactionId: validationResult.transactionId,
+        providerTransactionId: purchaseToken
+      });
+
+      // 5. Respuesta exitosa
       res.json({
         success: true,
         transactionId: validationResult.transactionId,
