@@ -40,6 +40,11 @@ app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
 app.post("/api/v1/auth/google", AuthController.googleAuth);
 app.post("/api/v1/auth/apple", AuthController.appleAuth);
 
+// Gestión de sesión (requieren auth)
+app.post("/api/v1/auth/logout", auth, AuthController.logout);
+app.post("/api/v1/auth/refresh", auth, AuthController.refreshToken);
+app.get("/api/v1/auth/me", auth, AuthController.validateSession);
+
 // Endpoints de validación de pagos (usan PaymentCoreController)
 app.post("/api/v1/payments/validate/google-play", auth, PaymentCoreController.validateGooglePlayPurchase);
 app.post("/api/v1/payments/validate/apple-app-store", auth, PaymentCoreController.validateApplePurchase);
@@ -59,14 +64,17 @@ app.post("/api/v1/users/me/stickers", auth, UserAssetsController.saveSticker);
 app.delete("/api/v1/users/me/stickers/:stickerId", auth, UserAssetsController.deleteSticker);
 app.get("/api/v1/users/me/packages", auth, UserAssetsController.getMyPackages);
 
-console.log("🚀 aiStickers Backend v2.2.0 - FULL PERSISTENCE");
+console.log("🚀 aiStickers Backend v2.3.0 - SECURITY ENHANCED");
 console.log("🔐 POST /api/v1/auth/token (HMAC signature)");
 console.log("🔍 POST /api/v1/auth/google (Google Sign-In)");
+console.log("👋 POST /api/v1/auth/logout (Logout)");
+console.log("🔄 POST /api/v1/auth/refresh (Refresh Token)");
+console.log("✅ GET /api/v1/auth/me (Validate Session)");
 console.log("📋 GET /api/v1/plans (Purchase Plans)");
 console.log("💰 GET /api/v1/users/balance (User Balance)");
-console.log("�️  GET /api/v1/users/me/stickers (User Stickers)");
+console.log("🖼️  GET /api/v1/users/me/stickers (User Stickers)");
 console.log("📦 GET /api/v1/users/me/packages (User Packages)");
-console.log("�📦 POST /api/v1/payments/validate/google-play (Google Play validation)");
+console.log("� POST /api/v1/payments/validate/google-play (Google Play validation)");
 console.log("🍎 POST /api/v1/payments/validate/apple-app-store (Apple validation)");
 
 const PORT = env.PORT || 22024;

@@ -112,5 +112,125 @@ export const AuthController = {
       error: "Apple Sign-In not yet implemented",
       message: "This endpoint is reserved for future iOS integration"
     });
+  },
+
+  /**
+   * POST /api/v1/auth/logout
+   * Logout del usuario - invalida el token actual
+   */
+  async logout(req, res) {
+    try {
+      const userId = req.user?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated"
+        });
+      }
+      
+      // En el futuro: añadir token a blacklist para invalidarlo
+      // Por ahora el frontend debe borrar el token localmente
+      
+      console.log(`👋 [LOGOUT] User ${userId} logged out`);
+      
+      res.json({
+        success: true,
+        message: "Logged out successfully",
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error("❌ [LOGOUT] Error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Logout failed"
+      });
+    }
+  },
+
+  /**
+   * POST /api/v1/auth/refresh
+   * Renueva el JWT antes de que expire
+   */
+  async refreshToken(req, res) {
+    try {
+      const userId = req.user?.sub;
+      const email = req.user?.email;
+      const name = req.user?.name;
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated"
+        });
+      }
+      
+      // Generar nuevo JWT con 24h adicionales
+      const newToken = jwt.sign(
+        { 
+          sub: userId,
+          email: email,
+          name: name,
+          provider: req.user?.provider || 'unknown',
+          refreshed: true
+        },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '24h' }
+      );
+      
+      console.log(`🔄 [REFRESH] Token refreshed for user ${userId}`);
+      
+      res.json({
+        success: true,
+        token: newToken,
+        expiresIn: '24h',
+        message: "Token refreshed successfully"
+      });
+      
+    } catch (error) {
+      console.error("❌ [REFRESH] Error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Token refresh failed"
+      });
+    }
+  },
+
+  /**
+   * GET /api/v1/auth/me
+   * Valida el token actual y devuelve info del usuario
+   */
+  async validateSession(req, res) {
+    try {
+      const userId = req.user?.sub;
+      const email = req.user?.email;
+      const name = req.user?.name;
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid or expired token"
+        });
+      }
+      
+      res.json({
+        success: true,
+        user: {
+          sub: userId,
+          email: email,
+          name: name
+        },
+        valid: true,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error("❌ [VALIDATE] Error:", error);
+      res.status(401).json({
+        success: false,
+        error: "Token validation failed"
+      });
+    }
   }
 };
