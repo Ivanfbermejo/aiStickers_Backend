@@ -28,18 +28,32 @@ if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEVELOPMENT_LOG
 app.use(helmet());
 app.use(cors());
 
-// Middleware para capturar rawBody ANTES de JSON parsing (necesario para HMAC)
+// Middleware para capturar rawBody SIN romper el stream para express.json
 app.use((req, res, next) => {
-  let data = '';
-  req.setEncoding('utf8');
-  req.on('data', (chunk) => {
-    data += chunk;
-  });
-  req.on('end', () => {
-    req.rawBody = data;
-    next();
-  });
-});
+  const chunks = []
+  
+  // Interceptar el evento 'data' sin consumir el stream
+  const originalOn = req.on.bind(req)
+  req.on = function(event, listener) {
+    if (event === 'data') {
+      const wrappedListener = function(chunk) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+        listener(chunk)
+      }
+      return originalOn(event, wrappedListener)
+    }
+    if (event === 'end') {
+      const wrappedListener = function() {
+        req.rawBody = Buffer.concat(chunks)
+        listener()
+      }
+      return originalOn(event, wrappedListener)
+    }
+    return originalOn(event, listener)
+  }
+  
+  next()
+})
 
 app.use(express.json({ limit: "5mb" }));
 
