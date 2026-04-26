@@ -9,6 +9,7 @@ import { AuthController } from "./src/controllers/auth.controller.js";
 import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
 import { BalanceController } from "./src/controllers/balance.controller.js";
 import { PlanController } from "./src/controllers/plan.controller.js";
+import { UserAssetsController } from "./src/controllers/userAssets.controller.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
 
 const app = express();
@@ -51,12 +52,21 @@ app.get("/api/v1/users/balance", auth, BalanceController.getBalance);
 app.post("/api/v1/users/balance/spend", auth, BalanceController.spendBalance);
 app.get("/api/v1/users/balance/history", auth, BalanceController.getTransactionHistory);
 
-console.log("🚀 aiStickers Backend v2.1.0 - CLEAN ARCHITECTURE");
+// Endpoints de assets del usuario (stickers, paquetes)
+app.get("/api/v1/users/me/assets", auth, UserAssetsController.getMyAssets);
+app.get("/api/v1/users/me/stickers", auth, UserAssetsController.getMyStickers);
+app.post("/api/v1/users/me/stickers", auth, UserAssetsController.saveSticker);
+app.delete("/api/v1/users/me/stickers/:stickerId", auth, UserAssetsController.deleteSticker);
+app.get("/api/v1/users/me/packages", auth, UserAssetsController.getMyPackages);
+
+console.log("🚀 aiStickers Backend v2.2.0 - FULL PERSISTENCE");
 console.log("🔐 POST /api/v1/auth/token (HMAC signature)");
 console.log("🔍 POST /api/v1/auth/google (Google Sign-In)");
 console.log("📋 GET /api/v1/plans (Purchase Plans)");
 console.log("💰 GET /api/v1/users/balance (User Balance)");
-console.log("📦 POST /api/v1/payments/validate/google-play (Google Play validation)");
+console.log("�️  GET /api/v1/users/me/stickers (User Stickers)");
+console.log("📦 GET /api/v1/users/me/packages (User Packages)");
+console.log("�📦 POST /api/v1/payments/validate/google-play (Google Play validation)");
 console.log("🍎 POST /api/v1/payments/validate/apple-app-store (Apple validation)");
 
 const PORT = env.PORT || 22024;
