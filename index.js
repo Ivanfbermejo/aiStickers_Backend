@@ -27,6 +27,20 @@ if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEVELOPMENT_LOG
 
 app.use(helmet());
 app.use(cors());
+
+// Middleware para capturar rawBody ANTES de JSON parsing (necesario para HMAC)
+app.use((req, res, next) => {
+  let data = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => {
+    data += chunk;
+  });
+  req.on('end', () => {
+    req.rawBody = data;
+    next();
+  });
+});
+
 app.use(express.json({ limit: "5mb" }));
 
 // Endpoint de autenticación - ESTE ES EL IMPORTANTE
@@ -40,29 +54,33 @@ app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
 app.post("/api/v1/auth/google", AuthController.googleAuth);
 app.post("/api/v1/auth/apple", AuthController.appleAuth);
 
-// Gestión de sesión (requieren auth)
-app.post("/api/v1/auth/logout", auth, AuthController.logout);
-app.post("/api/v1/auth/refresh", auth, AuthController.refreshToken);
-app.get("/api/v1/auth/me", auth, AuthController.validateSession);
+// Gestión de sesión (requieren FIRMA DE APP + JWT de usuario)
+app.post("/api/v1/auth/logout", requireClientSignature, auth, AuthController.logout);
+app.post("/api/v1/auth/refresh", requireClientSignature, auth, AuthController.refreshToken);
+app.get("/api/v1/auth/me", requireClientSignature, auth, AuthController.validateSession);
 
 // Endpoints de validación de pagos (usan PaymentCoreController)
-app.post("/api/v1/payments/validate/google-play", auth, PaymentCoreController.validateGooglePlayPurchase);
-app.post("/api/v1/payments/validate/apple-app-store", auth, PaymentCoreController.validateApplePurchase);
+// Requieren FIRMA DE APP + JWT de usuario
+app.post("/api/v1/payments/validate/google-play", requireClientSignature, auth, PaymentCoreController.validateGooglePlayPurchase);
+app.post("/api/v1/payments/validate/apple-app-store", requireClientSignature, auth, PaymentCoreController.validateApplePurchase);
 
 // Endpoint de planes de compra (usa PlanController)
-app.get("/api/v1/plans", auth, PlanController.getPlans);
+// Requiere FIRMA DE APP + JWT de usuario
+app.get("/api/v1/plans", requireClientSignature, auth, PlanController.getPlans);
 
 // Endpoints de balance (usan BalanceController)
-app.get("/api/v1/users/balance", auth, BalanceController.getBalance);
-app.post("/api/v1/users/balance/spend", auth, BalanceController.spendBalance);
-app.get("/api/v1/users/balance/history", auth, BalanceController.getTransactionHistory);
+// Requieren FIRMA DE APP + JWT de usuario
+app.get("/api/v1/users/balance", requireClientSignature, auth, BalanceController.getBalance);
+app.post("/api/v1/users/balance/spend", requireClientSignature, auth, BalanceController.spendBalance);
+app.get("/api/v1/users/balance/history", requireClientSignature, auth, BalanceController.getTransactionHistory);
 
 // Endpoints de assets del usuario (stickers, paquetes)
-app.get("/api/v1/users/me/assets", auth, UserAssetsController.getMyAssets);
-app.get("/api/v1/users/me/stickers", auth, UserAssetsController.getMyStickers);
-app.post("/api/v1/users/me/stickers", auth, UserAssetsController.saveSticker);
-app.delete("/api/v1/users/me/stickers/:stickerId", auth, UserAssetsController.deleteSticker);
-app.get("/api/v1/users/me/packages", auth, UserAssetsController.getMyPackages);
+// Requieren FIRMA DE APP + JWT de usuario
+app.get("/api/v1/users/me/assets", requireClientSignature, auth, UserAssetsController.getMyAssets);
+app.get("/api/v1/users/me/stickers", requireClientSignature, auth, UserAssetsController.getMyStickers);
+app.post("/api/v1/users/me/stickers", requireClientSignature, auth, UserAssetsController.saveSticker);
+app.delete("/api/v1/users/me/stickers/:stickerId", requireClientSignature, auth, UserAssetsController.deleteSticker);
+app.get("/api/v1/users/me/packages", requireClientSignature, auth, UserAssetsController.getMyPackages);
 
 console.log("🚀 aiStickers Backend v2.3.0 - SECURITY ENHANCED");
 console.log("🔐 POST /api/v1/auth/token (HMAC signature)");
