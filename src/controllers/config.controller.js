@@ -1,7 +1,7 @@
 export const ConfigController = {
   getConfig: (req, res) => {
     res.json({
-      minVersion: "0.0.6",
+      minVersion: "0.0.9",
       forceUpdate: false,
       storeUrl: {
         android: "https://play.google.com/store/apps/details?id=com.animatedsticker.aistickers",
