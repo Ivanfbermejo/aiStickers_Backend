@@ -222,10 +222,16 @@ class PaymentValidationService {
       console.log(`🔍 [GooglePlay] Purchase state: ${purchase.purchaseState}, consumed: ${purchase.consumptionState}`);
 
       // purchaseState: 0 = comprado, 1 = cancelado, 2 = pendiente
-      if (purchase.purchaseState !== 0) {
+      if (purchase.purchaseState === 1) {
         return {
           isValid: false,
-          errorMessage: `Purchase not valid. State: ${purchase.purchaseState} (0=purchased, 1=cancelled, 2=pending)`
+          errorMessage: 'Purchase was cancelled by Google Play'
+        };
+      }
+      if (purchase.purchaseState === 2) {
+        return {
+          isValid: false,
+          errorMessage: 'Purchase is pending — balance will be added once payment is confirmed'
         };
       }
 
