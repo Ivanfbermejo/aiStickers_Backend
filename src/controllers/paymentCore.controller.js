@@ -62,7 +62,7 @@ export const PaymentCoreController = {
       });
 
       // 4. Guardar paquete comprado en assets del usuario
-      await UserAssetsService.addPackage(userId, {
+      await UserAssetsService.savePackage(userId, {
         productId: productId,
         name: PlanService.getPlanName(productId) || productId,
         stickerCount: stickerCount,
