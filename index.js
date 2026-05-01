@@ -52,6 +52,18 @@ app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
 });
 
 // Autenticación social (públicos - sin auth middleware)
+// Config pública (solo firma de app, sin JWT de usuario)
+app.get("/api/v1/config", requireClientSignature, (req, res) => {
+  res.json({
+    minVersion: "0.0.6",
+    forceUpdate: false,
+    storeUrl: {
+      android: "https://play.google.com/store/apps/details?id=com.animatedsticker.aistickers",
+      ios: "https://apps.apple.com/app/id000000000"
+    }
+  });
+});
+
 app.post("/api/v1/auth/google", AuthController.googleAuth);
 app.post("/api/v1/auth/apple", AuthController.appleAuth);
 
