@@ -11,6 +11,7 @@ import { BalanceController } from "./src/controllers/balance.controller.js";
 import { PlanController } from "./src/controllers/plan.controller.js";
 import { UserAssetsController } from "./src/controllers/userAssets.controller.js";
 import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
+import { ConfigController } from "./src/controllers/config.controller.js";
 
 const app = express();
 
@@ -51,19 +52,10 @@ app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
   res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
 });
 
-// Autenticación social (públicos - sin auth middleware)
 // Config pública (solo firma de app, sin JWT de usuario)
-app.get("/api/v1/config", requireClientSignature, (req, res) => {
-  res.json({
-    minVersion: "0.0.6",
-    forceUpdate: false,
-    storeUrl: {
-      android: "https://play.google.com/store/apps/details?id=com.animatedsticker.aistickers",
-      ios: "https://apps.apple.com/app/id000000000"
-    }
-  });
-});
+app.get("/api/v1/config", requireClientSignature, ConfigController.getConfig);
 
+// Autenticación social (públicos - sin auth middleware)
 app.post("/api/v1/auth/google", AuthController.googleAuth);
 app.post("/api/v1/auth/apple", AuthController.appleAuth);
 
