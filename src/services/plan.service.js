@@ -8,19 +8,19 @@ import fetch from "node-fetch";
 // Lista de product IDs disponibles en Google Play
 const GOOGLE_PLAY_PRODUCTS = [
   "com.animatedsticker.aistickers.coins_10",
-  "com.animatedsticker.aistickers.coins_25",
-  "com.animatedsticker.aistickers.coins_60",
-  "com.animatedsticker.aistickers.coins_150",
-  "com.animatedsticker.aistickers.coins_400"
+  "com.animatedsticker.aistickers.basic_25",
+  "com.animatedsticker.aistickers.plus_60",
+  "com.animatedsticker.aistickers.pro_150",
+  "com.animatedsticker.aistickers.vip_400"
 ];
 
 // iOS App Store equivalents
 const APP_STORE_PRODUCTS = [
   "com.animatedsticker.aistickers.ios.coins_10",
-  "com.animatedsticker.aistickers.ios.coins_25",
-  "com.animatedsticker.aistickers.ios.coins_60",
-  "com.animatedsticker.aistickers.ios.coins_150",
-  "com.animatedsticker.aistickers.ios.coins_400"
+  "com.animatedsticker.aistickers.ios.basic_25",
+  "com.animatedsticker.aistickers.ios.plus_60",
+  "com.animatedsticker.aistickers.ios.pro_150",
+  "com.animatedsticker.aistickers.ios.vip_400"
 ];
 
 // Metadatos de planes (sin precios - vienen de las tiendas)
@@ -35,7 +35,7 @@ const PLANS_METADATA = [
     tier: "starter"
   },
   {
-    productId: "com.animatedsticker.aistickers.coins_25",
+    productId: "com.animatedsticker.aistickers.basic_25",
     name: "Basic Pack",
     description: "25 StickerDollars - Para usuarios regulares",
     stickerCount: 25,
@@ -44,7 +44,7 @@ const PLANS_METADATA = [
     tier: "basic"
   },
   {
-    productId: "com.animatedsticker.aistickers.coins_60",
+    productId: "com.animatedsticker.aistickers.plus_60",
     name: "Plus Pack",
     description: "60 StickerDollars - El más popular",
     stickerCount: 60,
@@ -53,7 +53,7 @@ const PLANS_METADATA = [
     tier: "plus"
   },
   {
-    productId: "com.animatedsticker.aistickers.coins_150",
+    productId: "com.animatedsticker.aistickers.pro_150",
     name: "Pro Pack",
     description: "150 StickerDollars - Para creadores",
     stickerCount: 150,
@@ -62,7 +62,7 @@ const PLANS_METADATA = [
     tier: "pro"
   },
   {
-    productId: "com.animatedsticker.aistickers.coins_400",
+    productId: "com.animatedsticker.aistickers.vip_400",
     name: "VIP Pack",
     description: "400 StickerDollars - Para profesionales",
     stickerCount: 400,
@@ -165,10 +165,10 @@ export class PlanService {
     // Precios sugeridos (el precio real viene de Google Play)
     const prices = {
       'com.animatedsticker.aistickers.coins_10': 2.99,
-      'com.animatedsticker.aistickers.coins_25': 6.99,
-      'com.animatedsticker.aistickers.coins_60': 12.99,
-      'com.animatedsticker.aistickers.coins_150': 29.99,
-      'com.animatedsticker.aistickers.coins_400': 69.99
+      'com.animatedsticker.aistickers.basic_25': 6.99,
+      'com.animatedsticker.aistickers.plus_60': 12.99,
+      'com.animatedsticker.aistickers.pro_150': 29.99,
+      'com.animatedsticker.aistickers.vip_400': 69.99
     };
     const normalizedId = productId.replace('.ios.', '.');
     return prices[normalizedId] || 0;

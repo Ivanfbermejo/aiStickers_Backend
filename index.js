@@ -31,27 +31,14 @@ app.use(cors());
 // Middleware para capturar rawBody SIN romper el stream para express.json
 app.use((req, res, next) => {
   const chunks = []
-  
-  // Interceptar el evento 'data' sin consumir el stream
-  const originalOn = req.on.bind(req)
-  req.on = function(event, listener) {
-    if (event === 'data') {
-      const wrappedListener = function(chunk) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-        listener(chunk)
-      }
-      return originalOn(event, wrappedListener)
-    }
-    if (event === 'end') {
-      const wrappedListener = function() {
-        req.rawBody = Buffer.concat(chunks)
-        listener()
-      }
-      return originalOn(event, wrappedListener)
-    }
-    return originalOn(event, listener)
-  }
-  
+  req.on('data', (chunk) => {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  })
+  req.on('end', () => {
+    try {
+      req.rawBody = Buffer.concat(chunks)
+    } catch (_) {}
+  })
   next()
 })
 
