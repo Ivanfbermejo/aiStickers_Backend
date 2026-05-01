@@ -1,5 +1,24 @@
 import crypto from 'crypto';
+import { google } from 'googleapis';
+import fs from 'fs';
 import { PlanService } from './plan.service.js';
+import { env } from '../utils/env.js';
+
+let androidPublisher = null;
+
+async function getAndroidPublisher() {
+  if (androidPublisher) return androidPublisher;
+  const keyPath = env.GOOGLE_SERVICE_ACCOUNT_PATH;
+  if (!keyPath || !fs.existsSync(keyPath)) {
+    throw new Error(`Service account not found at: ${keyPath}`);
+  }
+  const auth = new google.auth.GoogleAuth({
+    keyFile: keyPath,
+    scopes: ['https://www.googleapis.com/auth/androidpublisher']
+  });
+  androidPublisher = google.androidpublisher({ version: 'v3', auth });
+  return androidPublisher;
+}
 
 class FraudDetectionService {
   constructor() {
@@ -188,27 +207,38 @@ class PaymentValidationService {
 
   async validateGooglePlayPurchase(token, productId) {
     try {
-      // Implementar validación real con Google Play API
-      // Por ahora simulamos validación exitosa
-      const isValid = await this.verifyGooglePlayToken(token);
-      
-      if (!isValid) {
+      const packageName = env.GOOGLE_PLAY_PACKAGE_NAME;
+      if (!packageName) throw new Error('GOOGLE_PLAY_PACKAGE_NAME not configured');
+
+      const publisher = await getAndroidPublisher();
+
+      const response = await publisher.purchases.products.get({
+        packageName,
+        productId,
+        token
+      });
+
+      const purchase = response.data;
+      console.log(`🔍 [GooglePlay] Purchase state: ${purchase.purchaseState}, consumed: ${purchase.consumptionState}`);
+
+      // purchaseState: 0 = comprado, 1 = cancelado, 2 = pendiente
+      if (purchase.purchaseState !== 0) {
         return {
           isValid: false,
-          errorMessage: 'Invalid purchase token'
+          errorMessage: `Purchase not valid. State: ${purchase.purchaseState} (0=purchased, 1=cancelled, 2=pending)`
         };
       }
 
-      const amount = this.getAmountFromPackage(productId);
-      const transactionId = this.generateTransactionId();
-
       return {
         isValid: true,
-        amount,
-        transactionId,
-        providerTransactionId: token
+        amount: this.getAmountFromPackage(productId),
+        transactionId: this.generateTransactionId(),
+        providerTransactionId: purchase.orderId || token,
+        price: purchase.price,
+        currency: purchase.priceCurrencyCode
       };
     } catch (error) {
+      console.error('❌ [GooglePlay] Validation error:', error.message);
       return {
         isValid: false,
         errorMessage: error.message
@@ -245,17 +275,7 @@ class PaymentValidationService {
     }
   }
 
-  async verifyGooglePlayToken(token) {
-    // Implementar verificación real con clave pública de Google Play
-    // Por ahora simulamos validación
-    return token && token.length > 10;
-  }
 
-  async verifyAppleReceipt(receiptData) {
-    // Implementar verificación real con Apple servers
-    // Por ahora simulamos validación
-    return receiptData && receiptData.length > 10;
-  }
 
   getAmountFromPackage(productId) {
     // Usar PlanService para obtener stickerCount (1 StickerDollar = 1 imagen)

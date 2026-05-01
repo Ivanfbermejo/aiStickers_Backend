@@ -6,5 +6,8 @@
 **/public/uploads/*
 ._*
 
+# Secrets (service accounts, private keys)
+secrets/
+
 # macOS
 .DS_Store
