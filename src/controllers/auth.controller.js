@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
+import { env } from '../utils/env.js';
 
 /**
  * Controller para autenticación social (Google, Apple)
@@ -24,9 +25,9 @@ export const AuthController = {
     }
     
     try {
-      const googleClientId = process.env.GOOGLE_WEB_CLIENT_ID;
+      const googleClientId = env.GOOGLE_CLIENT_ID;
       if (!googleClientId) {
-        console.error("❌ [GOOGLE_AUTH] GOOGLE_WEB_CLIENT_ID no configurado");
+        console.error("❌ [GOOGLE_AUTH] GOOGLE_CLIENT_ID no configurado en .env");
         return res.status(500).json({
           success: false,
           error: "Server configuration error"
