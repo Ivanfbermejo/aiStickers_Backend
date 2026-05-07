@@ -35,11 +35,17 @@ export const AuthController = {
       }
       
       const client = new OAuth2Client(googleClientId);
-      
+
+      // Build audience array — include all registered OAuth Client IDs
+      // (Web Client ID + Android Client IDs for debug/release)
+      const audienceList = [googleClientId];
+      if (env.GOOGLE_ANDROID_CLIENT_ID) audienceList.push(env.GOOGLE_ANDROID_CLIENT_ID);
+      if (env.GOOGLE_ANDROID_DEBUG_CLIENT_ID) audienceList.push(env.GOOGLE_ANDROID_DEBUG_CLIENT_ID);
+
       // Verificar el token con Google
       const ticket = await client.verifyIdToken({
         idToken: idToken,
-        audience: googleClientId
+        audience: audienceList
       });
       
       const payload = ticket.getPayload();

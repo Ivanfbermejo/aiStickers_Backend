@@ -57,6 +57,8 @@ const env = {
 
   // Social Authentication
   GOOGLE_CLIENT_ID: get("GOOGLE_CLIENT_ID", true),
+  GOOGLE_ANDROID_CLIENT_ID: get("GOOGLE_ANDROID_CLIENT_ID"),
+  GOOGLE_ANDROID_DEBUG_CLIENT_ID: get("GOOGLE_ANDROID_DEBUG_CLIENT_ID"),
   APPLE_CLIENT_ID: get("APPLE_CLIENT_ID", true),
 
   // Mock Services
