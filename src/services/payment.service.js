@@ -17,6 +17,7 @@ export class PaymentService {
     if (!packageName || !serviceAccountJson) {
       throw new Error("Missing ANDROID_PACKAGE_NAME or GOOGLE_SERVICE_ACCOUNT_JSON env vars");
     }
+    console.log(`📦 [PAYMENT] Validating with packageName: ${packageName}, productId: ${productId}`);
 
     // Obtener access token de Google usando Service Account
     const accessToken = await PaymentService._getGoogleAccessToken(serviceAccountJson);
@@ -29,6 +30,7 @@ export class PaymentService {
 
     if (!response.ok) {
       const body = await response.text();
+      console.error(`❌ [PAYMENT] GP API ${response.status} for package=${packageName} product=${productId}: ${body}`);
       throw new Error(`Google Play API error ${response.status}: ${body}`);
     }
 
