@@ -78,7 +78,9 @@ export class BalanceService {
    */
   static async getBalance(userId) {
     const userData = memoryCache.get(userId);
-    return userData ? userData.sticker_dollars : 0;
+    const balance = userData ? userData.sticker_dollars : 0;
+    console.log(`📊 [BalanceService] getBalance(${userId}): ${balance}, transactions: ${userData?.transactions?.length || 0}`);
+    return balance;
   }
   
   /**
@@ -132,7 +134,9 @@ export class BalanceService {
       // Persistir inmediatamente para compras
       await saveDatabase();
       
-      console.log(`✅ [BalanceService] Added ${amount} StickerDollars to user ${userId}. New balance: ${newBalance}`);
+      // Verificar que se guardó correctamente
+      const verifyData = memoryCache.get(userId);
+      console.log(`✅ [BalanceService] Added ${amount} StickerDollars to user ${userId}. New balance: ${newBalance}, Verified: ${verifyData?.sticker_dollars}`);
       
       return {
         userId,

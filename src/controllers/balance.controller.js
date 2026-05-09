@@ -14,6 +14,8 @@ export const BalanceController = {
   async getBalance(req, res) {
     const userId = req.user?.sub;
     
+    console.log(`🔍 [BalanceController] getBalance userId=${userId}, req.auth?.sub=${req.auth?.sub}`);
+    
     if (!userId) {
       return res.status(401).json({ success: false, error: "User not authenticated" });
     }
@@ -84,12 +86,15 @@ export const BalanceController = {
     const userId = req.user?.sub;
     const limit = parseInt(req.query.limit) || 50;
     
+    console.log(`🔍 [BalanceController] getTransactionHistory userId=${userId}, req.auth?.sub=${req.auth?.sub}`);
+    
     if (!userId) {
       return res.status(401).json({ success: false, error: "User not authenticated" });
     }
     
     try {
       const history = await BalanceService.getTransactionHistory(userId, limit);
+      console.log(`🔍 [BalanceController] Found ${history.length} transactions for ${userId}`);
       
       res.json({
         success: true,

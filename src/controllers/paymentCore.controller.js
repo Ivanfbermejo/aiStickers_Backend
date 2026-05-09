@@ -9,6 +9,8 @@ export const PaymentCoreController = {
       const { purchaseToken, productId, expectedAmount } = req.body;
       const userId = req.user?.sub || req.auth?.sub || 'anonymous';
 
+      console.log(`🔍 [PaymentCoreController] userId sources: req.user.sub=${req.user?.sub}, req.auth.sub=${req.auth?.sub}, final=${userId}`);
+
       // Validar datos de entrada
       if (!purchaseToken || !productId) {
         return res.status(400).json({
