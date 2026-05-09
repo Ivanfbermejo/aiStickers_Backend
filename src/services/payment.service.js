@@ -38,8 +38,20 @@ export class PaymentService {
     console.log("📦 [PAYMENT] Google Play purchase response:", JSON.stringify(purchase));
 
     // purchaseState: 0 = purchased, 1 = canceled, 2 = pending
-    if (purchase.purchaseState !== 0) {
-      throw new Error(`Purchase not completed. State: ${purchase.purchaseState}`);
+    if (purchase.purchaseState === 1) {
+      throw new Error(`Purchase cancelled. State: ${purchase.purchaseState}`);
+    }
+    
+    // Si está pendiente, devolver estado especial para guardar y verificar después
+    if (purchase.purchaseState === 2) {
+      const stickerCount = PlanService.getStickerCount(productId);
+      return {
+        valid: false,
+        pending: true,
+        stickerCount: stickerCount,
+        orderId: purchase.orderId,
+        message: "Purchase is pending — balance will be added once payment is confirmed"
+      };
     }
 
     // consumptionState: 0 = not consumed - evitar duplicados

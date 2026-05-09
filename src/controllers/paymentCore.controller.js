@@ -46,6 +46,28 @@ export const PaymentCoreController = {
         productId
       );
 
+      // Si la compra está pendiente, guardarla para verificación posterior
+      if (validationResult.pending) {
+        console.log(`⏳ [PaymentCoreController] Purchase pending for user ${userId}, product ${productId}`);
+        
+        // Guardar compra pendiente
+        await PaymentCoreService.pendingPurchases.savePendingPurchase(userId, {
+          productId,
+          purchaseToken,
+          stickerCount: validationResult.stickerCount,
+          orderId: validationResult.orderId,
+          status: 'PENDING',
+          createdAt: new Date().toISOString()
+        });
+        
+        return res.status(202).json({
+          success: false,
+          pending: true,
+          error: validationResult.message,
+          fraudFlags: fraudAnalysis.flags
+        });
+      }
+
       if (!validationResult.isValid) {
         return res.status(400).json({
           success: false,

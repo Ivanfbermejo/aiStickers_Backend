@@ -231,7 +231,10 @@ class PaymentValidationService {
       if (purchase.purchaseState === 2) {
         return {
           isValid: false,
-          errorMessage: 'Purchase is pending — balance will be added once payment is confirmed'
+          pending: true,
+          stickerCount: this.getAmountFromPackage(productId),
+          orderId: purchase.orderId,
+          message: 'Purchase is pending — balance will be added once payment is confirmed'
         };
       }
 
@@ -293,8 +296,75 @@ class PaymentValidationService {
   }
 }
 
+/**
+ * Servicio para gestionar compras pendientes (pagos lentos)
+ * Guarda compras que están en estado PENDING para verificarlas más tarde
+ */
+class PendingPurchasesService {
+  constructor() {
+    // En memoria por ahora - en producción usar Redis/DB
+    this.pendingPurchases = new Map(); // userId -> array of pending purchases
+  }
+
+  async savePendingPurchase(userId, purchaseData) {
+    if (!this.pendingPurchases.has(userId)) {
+      this.pendingPurchases.set(userId, []);
+    }
+    
+    const userPurchases = this.pendingPurchases.get(userId);
+    
+    // Evitar duplicados por purchaseToken
+    const existingIndex = userPurchases.findIndex(p => p.purchaseToken === purchaseData.purchaseToken);
+    if (existingIndex >= 0) {
+      userPurchases[existingIndex] = { ...userPurchases[existingIndex], ...purchaseData, updatedAt: new Date().toISOString() };
+      console.log(`📝 [PendingPurchases] Updated existing pending purchase for ${userId}: ${purchaseData.productId}`);
+    } else {
+      userPurchases.push({
+        ...purchaseData,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
+      });
+      console.log(`📝 [PendingPurchases] Saved new pending purchase for ${userId}: ${purchaseData.productId}`);
+    }
+    
+    return true;
+  }
+
+  async getPendingPurchases(userId) {
+    return this.pendingPurchases.get(userId) || [];
+  }
+
+  async removePendingPurchase(userId, purchaseToken) {
+    if (!this.pendingPurchases.has(userId)) return false;
+    
+    const userPurchases = this.pendingPurchases.get(userId);
+    const filtered = userPurchases.filter(p => p.purchaseToken !== purchaseToken);
+    
+    if (filtered.length < userPurchases.length) {
+      this.pendingPurchases.set(userId, filtered);
+      console.log(`🗑️ [PendingPurchases] Removed pending purchase for ${userId}: ${purchaseToken}`);
+      return true;
+    }
+    return false;
+  }
+
+  async updatePendingPurchase(userId, purchaseToken, updates) {
+    if (!this.pendingPurchases.has(userId)) return false;
+    
+    const userPurchases = this.pendingPurchases.get(userId);
+    const index = userPurchases.findIndex(p => p.purchaseToken === purchaseToken);
+    
+    if (index >= 0) {
+      userPurchases[index] = { ...userPurchases[index], ...updates, updatedAt: new Date().toISOString() };
+      return true;
+    }
+    return false;
+  }
+}
+
 
 export const PaymentCoreService = {
   fraudDetection: new FraudDetectionService(),
-  paymentValidation: new PaymentValidationService()
+  paymentValidation: new PaymentValidationService(),
+  pendingPurchases: new PendingPurchasesService()
 };
