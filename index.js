@@ -24,6 +24,7 @@ import { PaymentController } from './src/infrastructure/web/controllers/payment.
 import { BalanceController } from './src/infrastructure/web/controllers/balance.controller.js';
 import { ConfigController } from './src/infrastructure/web/controllers/config.controller.js';
 import { PlanController } from './src/infrastructure/web/controllers/plan.controller.js';
+import { I18nController } from './src/infrastructure/web/controllers/i18n.controller.js';
 
 // Initialize
 const app = express();
@@ -75,6 +76,9 @@ container.initialize().then(() => {
   
   // --- Configuration (HMAC only) ---
   app.get('/api/v1/config', requireHmac, ConfigController.getConfig);
+
+  // --- Translations (HMAC only) ---
+  app.get('/api/v1/i18n/:lang', requireHmac, I18nController.getTranslations);
   
   // --- Plans (HMAC + User JWT) ---
   app.get('/api/v1/plans', requireHmac, requireAuth, PlanController.getPlans);
@@ -112,6 +116,7 @@ container.initialize().then(() => {
     console.log('  POST /api/v1/auth/google          (HMAC)        - Google Sign-In');
     console.log('  GET  /api/v1/auth/me              (HMAC+User)   - Validate session');
     console.log('  GET  /api/v1/config               (HMAC)        - Public config');
+    console.log('  GET  /api/v1/i18n/:lang           (HMAC)        - Translations');
     console.log('  GET  /api/v1/plans                (HMAC+User)   - Purchase plans');
     console.log('  POST /api/v1/payments/validate/*  (HMAC+User)   - Validate purchases');
     console.log('  GET  /api/v1/users/balance        (HMAC+User)   - User balance');
