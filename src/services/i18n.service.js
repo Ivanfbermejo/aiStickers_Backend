@@ -1,5 +1,5 @@
 import fetch from "node-fetch";
-import env from "../utils/env.js";
+import { env } from "../config/env.js";
 
 class CacheService {
   constructor() {

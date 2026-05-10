@@ -4,6 +4,18 @@
 
 PaymentCore ahora soporta autenticación social utilizando Google Sign-In y Apple Sign-In. Los usuarios pueden iniciar sesión con sus cuentas existentes y obtener automáticamente un token JWT para usar los servicios de pagos.
 
+**⚠️ IMPORTANTE**: Todos los endpoints de autenticación requieren firma HMAC de la aplicación (ver [architecture.md](./architecture.md#security-architecture)).
+
+## Headers Requeridos
+
+Todas las peticiones deben incluir:
+
+```
+Authorization: HMAC <signature>
+X-Client-Id: <client-id>
+X-Timestamp: <unix-timestamp>
+```
+
 ## Authentication Flow
 
 ### 1. Google Sign-In Flow

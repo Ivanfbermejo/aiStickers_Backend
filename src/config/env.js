@@ -37,7 +37,14 @@ export const env = {
   DATA_DIR: process.env.DATA_DIR || '/var/www/aiStickers_Backend/data',
   
   // Google Play
-  GOOGLE_PLAY_SERVICE_ACCOUNT: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT
+  GOOGLE_PLAY_SERVICE_ACCOUNT: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT,
+
+  // i18n / POEditor
+  POEDITOR_API_TOKEN: process.env.POEDITOR_API_TOKEN,
+  POEDITOR_PROJECT_ID: process.env.POEDITOR_PROJECT_ID,
+
+  // HMAC window
+  SIG_WINDOW_SEC: Number(process.env.SIG_WINDOW_SEC || 300)
 };
 
 // Validation
