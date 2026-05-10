@@ -1,106 +1,123 @@
+#!/usr/bin/env node
+/**
+ * aiStickers Backend
+ * Clean Architecture Implementation
+ */
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import bodyParser from 'body-parser';
+import crypto from 'crypto';
 
-import env from "./src/utils/env.js";
-import { AuthService } from "./src/services/auth.service.js";
-import { auth } from "./src/middlewares/auth.middleware.js";
-import { AuthController } from "./src/controllers/auth.controller.js";
-import { PaymentCoreController } from "./src/controllers/paymentCore.controller.js";
-import { BalanceController } from "./src/controllers/balance.controller.js";
-import { PlanController } from "./src/controllers/plan.controller.js";
-import { UserAssetsController } from "./src/controllers/userAssets.controller.js";
-import { requireClientSignature } from "./src/middlewares/clientSign.middleware.js";
-import { ConfigController } from "./src/controllers/config.controller.js";
+// Configuration
+import { env, validateEnv } from './src/config/env.js';
+import { container } from './src/config/container.js';
 
+// Middleware
+import { requireHmac } from './src/infrastructure/web/middleware/hmac.middleware.js';
+import { requireAuth, requireUser } from './src/infrastructure/web/middleware/auth.middleware.js';
+
+// Controllers
+import { AuthController } from './src/infrastructure/web/controllers/auth.controller.js';
+import { PaymentController } from './src/infrastructure/web/controllers/payment.controller.js';
+import { BalanceController } from './src/infrastructure/web/controllers/balance.controller.js';
+import { ConfigController } from './src/infrastructure/web/controllers/config.controller.js';
+import { PlanController } from './src/infrastructure/web/controllers/plan.controller.js';
+
+// Initialize
 const app = express();
 
-// Logs detallados para development
-if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEVELOPMENT_LOGS === 'true') {
-  console.log("🔍 Development logs enabled");
-  
-  app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.log(`📝 [${timestamp}] ${req.method} ${req.url}`);
-    next();
-  });
-}
+// Validate environment
+validateEnv();
 
+// CORS - Allow all origins and required headers
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id', 'X-Timestamp', 'X-User-JWT', 'X-App-Id', 'X-App-Timestamp', 'X-App-Nonce', 'X-App-Signature']
+}));
+
+// Security headers
 app.use(helmet());
-app.use(cors());
 
-// Middleware para capturar rawBody SIN romper el stream para express.json
-app.use((req, res, next) => {
-  const chunks = []
-  req.on('data', (chunk) => {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  })
-  req.on('end', () => {
-    try {
-      req.rawBody = Buffer.concat(chunks)
-    } catch (_) {}
-  })
-  next()
-})
+// JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
+app.use(bodyParser.json({
+  limit: '5mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf; // Keep as Buffer for correct hash calculation
+  }
+}));
 
-app.use(express.json({ limit: "5mb" }));
-
-// Endpoint de autenticación - ESTE ES EL IMPORTANTE
-app.post("/api/v1/auth/token", requireClientSignature, (req, res) => {
-  console.log("🔐 [AUTH] Endpoint /api/v1/auth/token llamado");
-  const token = AuthService.sign({ sub: "ivan", scope: ["stickers"] });
-  res.json({ token, expiresIn: env.JWT_EXPIRES_IN });
+// Initialize dependency container
+container.initialize().then(() => {
+  console.log('🚀 aiStickers Backend - Clean Architecture');
+  console.log(`📦 Environment: ${env.NODE_ENV}`);
+  console.log(`💾 Data Directory: ${env.DATA_DIR}`);
+  
+  // ========== ROUTES ==========
+  
+  // Health Check
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+  
+  // --- Authentication ---
+  // App Token (HMAC only)
+  app.post('/api/v1/auth/token', requireHmac, AuthController.generateAppToken);
+  
+  // Google Sign-In (HMAC + User auth)
+  app.post('/api/v1/auth/google', requireHmac, AuthController.googleAuth);
+  
+  // Session Management (HMAC + User JWT)
+  app.get('/api/v1/auth/me', requireHmac, requireAuth, AuthController.validateSession);
+  app.post('/api/v1/auth/logout', requireHmac, requireAuth, AuthController.logout);
+  
+  // --- Configuration (HMAC only) ---
+  app.get('/api/v1/config', requireHmac, ConfigController.getConfig);
+  
+  // --- Plans (HMAC + User JWT) ---
+  app.get('/api/v1/plans', requireHmac, requireAuth, PlanController.getPlans);
+  
+  // --- Payments (HMAC + User JWT required) ---
+  app.post('/api/v1/payments/validate/google-play', requireHmac, requireUser, PaymentController.validateGooglePlayPurchase);
+  app.post('/api/v1/payments/validate/apple-app-store', requireHmac, requireUser, PaymentController.validateApplePurchase);
+  
+  // --- Balance (HMAC + User JWT required) ---
+  app.get('/api/v1/users/balance', requireHmac, requireUser, BalanceController.getBalance);
+  app.post('/api/v1/users/balance/spend', requireHmac, requireUser, BalanceController.spendBalance);
+  app.get('/api/v1/users/balance/history', requireHmac, requireUser, BalanceController.getTransactionHistory);
+  
+  // --- Error Handling ---
+  app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  });
+  
+  // 404 Handler
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+  
+  // Start server
+  const PORT = env.PORT;
+  const HOST = '0.0.0.0'; // Listen on all interfaces
+  app.listen(PORT, HOST, () => {
+    console.log(`✅ Server running on http://${HOST}:${PORT}`);
+    console.log('\n📋 Available Endpoints:');
+    console.log('  POST /api/v1/auth/token           (HMAC)        - App authentication');
+    console.log('  POST /api/v1/auth/google          (HMAC)        - Google Sign-In');
+    console.log('  GET  /api/v1/auth/me              (HMAC+User)   - Validate session');
+    console.log('  GET  /api/v1/config               (HMAC)        - Public config');
+    console.log('  GET  /api/v1/plans                (HMAC+User)   - Purchase plans');
+    console.log('  POST /api/v1/payments/validate/*  (HMAC+User)   - Validate purchases');
+    console.log('  GET  /api/v1/users/balance        (HMAC+User)   - User balance');
+    console.log('  GET  /api/v1/users/balance/history (HMAC+User)  - Transaction history');
+    console.log('\n🔒 Security: All endpoints require HMAC + User JWT for sensitive operations\n');
+  });
 });
 
-// Config pública (solo firma de app, sin JWT de usuario)
-app.get("/api/v1/config", requireClientSignature, ConfigController.getConfig);
-
-// Autenticación social (públicos - sin auth middleware)
-app.post("/api/v1/auth/google", AuthController.googleAuth);
-app.post("/api/v1/auth/apple", AuthController.appleAuth);
-
-// Gestión de sesión (requieren FIRMA DE APP + JWT de usuario)
-app.post("/api/v1/auth/logout", requireClientSignature, auth, AuthController.logout);
-app.post("/api/v1/auth/refresh", requireClientSignature, auth, AuthController.refreshToken);
-app.get("/api/v1/auth/me", requireClientSignature, auth, AuthController.validateSession);
-
-// Endpoints de validación de pagos (usan PaymentCoreController)
-// Requieren FIRMA DE APP + JWT de usuario
-app.post("/api/v1/payments/validate/google-play", requireClientSignature, auth, PaymentCoreController.validateGooglePlayPurchase);
-app.post("/api/v1/payments/validate/apple-app-store", requireClientSignature, auth, PaymentCoreController.validateApplePurchase);
-
-// Endpoint de planes de compra (usa PlanController)
-// Requiere FIRMA DE APP + JWT de usuario
-app.get("/api/v1/plans", requireClientSignature, auth, PlanController.getPlans);
-
-// Endpoints de balance (usan BalanceController)
-// Requieren FIRMA DE APP + JWT de usuario
-app.get("/api/v1/users/balance", requireClientSignature, auth, BalanceController.getBalance);
-app.post("/api/v1/users/balance/spend", requireClientSignature, auth, BalanceController.spendBalance);
-app.get("/api/v1/users/balance/history", requireClientSignature, auth, BalanceController.getTransactionHistory);
-
-// Endpoints de assets del usuario (stickers, paquetes)
-// Requieren FIRMA DE APP + JWT de usuario
-app.get("/api/v1/users/me/assets", requireClientSignature, auth, UserAssetsController.getMyAssets);
-app.get("/api/v1/users/me/stickers", requireClientSignature, auth, UserAssetsController.getMyStickers);
-app.post("/api/v1/users/me/stickers", requireClientSignature, auth, UserAssetsController.saveSticker);
-app.delete("/api/v1/users/me/stickers/:stickerId", requireClientSignature, auth, UserAssetsController.deleteSticker);
-app.get("/api/v1/users/me/packages", requireClientSignature, auth, UserAssetsController.getMyPackages);
-
-console.log("🚀 aiStickers Backend v2.3.0 - SECURITY ENHANCED");
-console.log("🔐 POST /api/v1/auth/token (HMAC signature)");
-console.log("🔍 POST /api/v1/auth/google (Google Sign-In)");
-console.log("👋 POST /api/v1/auth/logout (Logout)");
-console.log("🔄 POST /api/v1/auth/refresh (Refresh Token)");
-console.log("✅ GET /api/v1/auth/me (Validate Session)");
-console.log("📋 GET /api/v1/plans (Purchase Plans)");
-console.log("💰 GET /api/v1/users/balance (User Balance)");
-console.log("🖼️  GET /api/v1/users/me/stickers (User Stickers)");
-console.log("📦 GET /api/v1/users/me/packages (User Packages)");
-console.log("� POST /api/v1/payments/validate/google-play (Google Play validation)");
-console.log("🍎 POST /api/v1/payments/validate/apple-app-store (Apple validation)");
-
-const PORT = env.PORT || 22024;
-app.listen(PORT, () => {
-  console.log("✅ SERVIDOR INICIADO EN PUERTO:", PORT);
-});
+export default app;

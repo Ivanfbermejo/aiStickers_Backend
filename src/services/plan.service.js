@@ -27,16 +27,32 @@ const APP_STORE_PRODUCTS = [
 const PLANS_METADATA = [
   {
     productId: "com.animatedsticker.aistickers.coins_10",
-    name: "Mini Pack",
-    description: "10 StickerDollars - Perfecto para empezar",
-    stickerCount: 10,
+    getPlanName(stickerCount) {
+      const names = {
+        10: 'Starter Pack',
+        25: 'Basic Pack',
+        60: 'Plus Pack',
+        150: 'Pro Pack',
+        400: 'VIP Pack'
+      };
+      return names[stickerCount] || 'Custom Pack';
+    },
     features: ["10 imágenes con IA", "Acceso a todos los modelos"],
     isActive: true,
     tier: "starter"
   },
   {
     productId: "com.animatedsticker.aistickers.basic_25",
-    name: "Basic Pack",
+    getPlanName(stickerCount) {
+      const names = {
+        10: 'Starter Pack',
+        25: 'Basic Pack',
+        60: 'Plus Pack',
+        150: 'Pro Pack',
+        400: 'VIP Pack'
+      };
+      return names[stickerCount] || 'Custom Pack';
+    },
     description: "25 StickerDollars - Para usuarios regulares",
     stickerCount: 25,
     features: ["25 imágenes con IA", "Mejor valor"],
