@@ -4,7 +4,8 @@
  */
 export class FraudDetectionService {
   constructor() {
-    this.suspiciousPatterns = new Set();
+    this.suspiciousPatterns = new Set();   // token-level: repeated token detection
+    this.userAttempts = new Map();          // user-level: rate limiting per user
   }
   
   /**
@@ -38,12 +39,12 @@ export class FraudDetectionService {
     
     // Check 3: Rate limiting per user
     const userKey = `user:${userId}`;
-    const userAttempts = this.suspiciousPatterns.get(userKey) || 0;
+    const userAttempts = this.userAttempts.get(userKey) || 0;
     if (userAttempts > 10) {
       flags.push('RATE_LIMIT_EXCEEDED');
       riskScore += 40;
     }
-    this.suspiciousPatterns.set(userKey, userAttempts + 1);
+    this.userAttempts.set(userKey, userAttempts + 1);
     
     // Determine if fraudulent (risk score > 70 is considered fraudulent)
     const isFraudulent = riskScore >= 70;
