@@ -1,81 +1,66 @@
-import fetch from "node-fetch";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { env } from "../config/env.js";
 
-class CacheService {
-  constructor() {
-    this.store = new Map();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TRANSLATIONS_DIR = path.resolve(
+  env.DATA_DIR || path.join(__dirname, "../../data"),
+  "translations"
+);
+
+// In-memory cache: lang → { version, data }
+const memCache = new Map();
+
+function loadFromDisk(lang) {
+  const filePath = path.join(TRANSLATIONS_DIR, `${lang}.json`);
+  if (!fs.existsSync(filePath)) return null;
+
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`[i18n] Failed to parse ${filePath}:`, err.message);
+    return null;
   }
-
-  get(key) {
-    const entry = this.store.get(key);
-    if (!entry) return null;
-
-    if (Date.now() > entry.expiry) {
-      this.store.delete(key);
-      return null;
-    }
-
-    return entry.value;
-  }
-
-  set(key, value, ttlSeconds) {
-    const expiry = Date.now() + ttlSeconds * 1000;
-    this.store.set(key, { value, expiry });
-  }
-}
-
-const cache = new CacheService();
-
-async function getTranslations(lang) {
-  const exportRes = await fetch("https://api.poeditor.com/v2/projects/export", {
-    method: "POST",
-    body: new URLSearchParams({
-      api_token: env.POEDITOR_API_TOKEN,
-      id: env.POEDITOR_PROJECT_ID,
-      language: lang,
-      type: "json"
-    })
-  });
-
-  const exportData = await exportRes.json();
-
-  if (!exportData.result?.url) {
-    throw new Error("Invalid POEditor response");
-  }
-
-  const fileUrl = exportData.result.url;
-  const translations = await fetch(fileUrl).then(r => r.json());
-
-  const clean = {};
-  translations.forEach(item => {
-    clean[item.term] = item.definition;
-  });
-
-  return clean;
 }
 
 export const I18nService = {
-  async getTranslationsWithCache(lang) {
-    const cacheKey = `translations_${lang}`;
-    const CACHE_TTL = 300;
+  /**
+   * Returns { version, data } for the given language.
+   * Reads from disk once per process lifetime (hot-reloadable via clearCache).
+   *
+   * @param {string} lang   - language code, e.g. "es"
+   * @param {number|null} clientVersion - version the client already has (optional)
+   *   If clientVersion === stored version → returns { version, data: null } (no download needed)
+   */
+  getTranslations(lang, clientVersion = null) {
+    if (!memCache.has(lang)) {
+      const file = loadFromDisk(lang);
+      if (!file) {
+        throw new Error(`translations_not_found:${lang}`);
+      }
+      memCache.set(lang, { version: file.version, data: file.data });
+      console.log(`[i18n] Loaded '${lang}' from disk (${Object.keys(file.data).length} strings, v${file.version})`);
+    }
 
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
+    const entry = memCache.get(lang);
 
-    try {
-      const data = await getTranslations(lang);
+    if (clientVersion !== null && Number(clientVersion) === entry.version) {
+      return { version: entry.version, upToDate: true, data: null };
+    }
 
-      const response = {
-        version: Date.now(),
-        data
-      };
+    return { version: entry.version, upToDate: false, data: entry.data };
+  },
 
-      cache.set(cacheKey, response, CACHE_TTL);
-      return response;
-
-    } catch (error) {
-      console.error("Failed to load translations:", error);
-      throw new Error("failed_to_load_translations");
+  /** Force reload a language from disk (useful after running sync script) */
+  clearCache(lang = null) {
+    if (lang) {
+      memCache.delete(lang);
+      console.log(`[i18n] Cache cleared for '${lang}'`);
+    } else {
+      memCache.clear();
+      console.log("[i18n] Full cache cleared");
     }
   }
 };
