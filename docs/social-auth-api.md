@@ -8,31 +8,56 @@ PaymentCore ahora soporta autenticación social utilizando Google Sign-In y Appl
 
 ## Headers Requeridos
 
-Todas las peticiones deben incluir:
+Todas las peticiones deben incluir los headers HMAC generados por `:authcore`:
 
 ```
-Authorization: HMAC <signature>
-X-Client-Id: <client-id>
-X-Timestamp: <unix-timestamp>
+X-App-Id: <client-id>
+X-App-Timestamp: <unix-epoch-seconds>
+X-App-Nonce: <uuid>
+X-App-Signature: <hmac-sha256-hex>
+```
+
+Canonical string firmado: `timestamp.nonce.METHOD.path.bodyHash`
+
+Para endpoints con user JWT también:
+```
+Authorization: Bearer <jwt-token>
 ```
 
 ## Authentication Flow
 
-### 1. Google Sign-In Flow
+### Google Sign-In Flow
 ```
-User → Google Sign-In → ID Token → Our Backend → JWT Payment Token
+User → Google Sign-In (Credential Manager) → ID Token
+  → SessionService (:userauth) → POST /api/v1/auth/google (HMAC)
+  → Backend verifica con Google → JWT guardado en TokenStorage
 ```
 
-### 2. Apple Sign-In Flow
-```
-User → Apple Sign-In → Identity Token → Our Backend → JWT Payment Token
-```
+> ⚠️ Apple Sign-In: pendiente de implementar en iOS.
 
 ## Endpoints
 
-### 1. Google Authentication
+### 1. App Token (HMAC only)
 
-**Endpoint:** `POST /api/v1/auth/google`
+**Endpoint:** `POST /api/v1/auth/token`  
+**Seguridad:** HMAC
+
+**Request:** body vacío `{}`
+
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiresIn": "24h"
+}
+```
+
+---
+
+### 2. Google Sign-In
+
+**Endpoint:** `POST /api/v1/auth/google`  
+**Seguridad:** HMAC
 
 **Request:**
 ```json
@@ -45,182 +70,62 @@ User → Apple Sign-In → Identity Token → Our Backend → JWT Payment Token
 ```json
 {
   "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "user": {
-    "id": "user_123456",
     "email": "user@gmail.com",
     "name": "John Doe",
     "picture": "https://lh3.googleusercontent.com/..."
-  },
-  "paymentToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": "15m"
-}
-```
-
-### 2. Apple Authentication
-
-**Endpoint:** `POST /api/v1/auth/apple`
-
-**Request:**
-```json
-{
-  "identityToken": "apple_identity_token_here",
-  "userInfo": {
-    "name": "John Doe",
-    "email": "user@icloud.com"
   }
 }
 ```
 
+---
+
+### 3. Validar Sesión
+
+**Endpoint:** `GET /api/v1/auth/me`  
+**Seguridad:** HMAC + User JWT
+
 **Response:**
 ```json
 {
-  "success": true,
+  "valid": true,
   "user": {
-    "id": "user_789012",
-    "email": "user@icloud.com",
-    "name": "John Doe",
-    "picture": null
-  },
-  "paymentToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": "15m"
-}
-```
-
-### 3. Token Refresh
-
-**Endpoint:** `POST /api/v1/auth/refresh`
-
-**Headers:** `Authorization: Bearer <current_payment_token>`
-
-**Request:**
-```json
-{}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "paymentToken": "new_jwt_token_here",
-  "expiresIn": "15m"
-}
-```
-
-### 4. Token Verification
-
-**Endpoint:** `GET /api/v1/auth/verify`
-
-**Headers:** `Authorization: Bearer <payment_token>`
-
-**Response:**
-```json
-{
-  "success": true,
-  "user": {
-    "id": "user_123456",
     "email": "user@gmail.com",
-    "name": "John Doe",
-    "picture": "https://lh3.googleusercontent.com/..."
-  },
-  "expiresAt": "2024-01-01T12:15:00Z"
+    "name": "John Doe"
+  }
 }
 ```
 
-## Frontend Implementation Examples
+---
 
-### Android (Google Sign-In)
+### 4. Logout
+
+**Endpoint:** `POST /api/v1/auth/logout`  
+**Seguridad:** HMAC + User JWT
+
+**Response:**
+```json
+{ "success": true }
+```
+
+## Frontend Implementation
+
+El frontend usa `UserAuthManager` (:userauth) como único punto de entrada:
 
 ```kotlin
-// 1. Configurar Google Sign-In
-val googleSignInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-    .requestIdToken(getString(R.string.default_web_client_id))
-    .requestEmail()
-    .build()
+// Android — iniciar login
+UserAuthManager.requireLogin() // → GoogleAuthProvider (Credential Manager API)
 
-val googleSignInClient = GoogleSignIn.getClient(this, googleSignInOptions)
-
-// 2. Iniciar flujo de login
-val signInIntent = googleSignInClient.signInIntent
-startActivityForResult(signInIntent, RC_SIGN_IN)
-
-// 3. Manejar resultado
-override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-    super.onActivityResult(requestCode, resultCode, data)
-    
-    if (requestCode == RC_SIGN_IN) {
-        val task = GoogleSignIn.getSignedInAccountFromIntent(data)
-        handleGoogleSignInResult(task)
-    }
+// Flujo interno en SessionService.kt
+val body = """{"idToken":"$googleIdToken"}"""
+val hmac = AuthCoreManager.getHmacHeaders("POST", "/api/v1/auth/google", body)
+val response = httpClient.post("$baseUrl/api/v1/auth/google") {
+    contentType(ContentType.Application.Json)
+    setBody(body)
+    hmac.forEach { (k, v) -> header(k, v) }
 }
-
-private suspend fun handleGoogleSignInResult(completedTask: Task<GoogleSignInAccount>) {
-    try {
-        val account = completedTask.getResult(ApiException::class.java)
-        val idToken = account.idToken!!
-        
-        // Enviar a nuestro backend
-        val authResult = socialAuthService.authenticateWithGoogle(idToken)
-        
-        if (authResult.isSuccess) {
-            val session = authResult.getOrThrow()
-            // Guardar token y navegar a la app
-            savePaymentSession(session)
-        } else {
-            // Manejar error
-            showError("Authentication failed")
-        }
-    } catch (e: ApiException) {
-        // Manejar error de Google Sign-In
-    }
-}
-```
-
-### iOS (Apple Sign-In)
-
-```swift
-// 1. Configurar Apple Sign-In
-import AuthenticationServices
-
-@objc func handleAppleSignIn() {
-    let appleIDProvider = ASAuthorizationAppleIDProvider()
-    let request = appleIDProvider.createRequest()
-    request.requestedScopes = [.fullName, .email]
-    
-    let authorizationController = ASAuthorizationController(authorizationRequests: [request])
-    authorizationController.delegate = self
-    authorizationController.presentationContextProvider = self
-    authorizationController.performRequests()
-}
-
-// 2. Manejar resultado
-extension ViewController: ASAuthorizationControllerDelegate {
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-            let identityToken = String(data: appleIDCredential.identityToken!, encoding: .utf8)
-            
-            // Enviar a nuestro backend
-            let userInfo = AppleUserInfo(
-                name: appleIDCredential.fullName?.formatted(),
-                email: appleIDCredential.email
-            )
-            
-            Task {
-                let authResult = await socialAuthService.authenticateWithApple(
-                    identityToken: identityToken,
-                    userInfo: userInfo
-                )
-                
-                if authResult.success {
-                    // Guardar token y navegar a la app
-                    savePaymentSession(authResult)
-                } else {
-                    // Manejar error
-                    showError("Authentication failed")
-                }
-            }
-        }
-    }
-}
+// Token guardado en TokenStorage (EncryptedSharedPreferences)
 ```
 
 ## Security Considerations
@@ -274,13 +179,14 @@ async function findOrCreateUser(userInfo) {
 
 ```json
 {
-  "sub": "user_123456",           // User ID in our system
-  "email": "user@gmail.com",        // User email
-  "name": "John Doe",               // User name
-  "provider": "google",             // Original auth provider
-  "scope": ["payments", "stickers"], // Available scopes
-  "iat": 1640995200,               // Issued at
-  "exp": 1640996100                // Expires at
+  "sub": "user@gmail.com",         // Email como ID principal
+  "email": "user@gmail.com",
+  "name": "John Doe",
+  "googleId": "123456789",
+  "type": "user",
+  "scope": ["stickers"],
+  "iat": 1640995200,
+  "exp": 1640995200
 }
 ```
 
@@ -314,35 +220,29 @@ async function findOrCreateUser(userInfo) {
 
 ## Environment Variables
 
-Configure estas variables en tu `.env`:
-
 ```bash
 # Google Sign-In
 GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 
-# Apple Sign-In
-APPLE_CLIENT_ID=com.yourapp.bundleid
+# HMAC
+CLIENT_ID=ai-stickers-android
+CLIENT_SECRET=your_hmac_secret
 
-# JWT Secret
+# JWT
 JWT_SECRET=your_super_secret_jwt_key
-
-# Optional: JWT expiration
-JWT_EXPIRES_IN=15m
+JWT_EXPIRES_IN=24h
 ```
 
-## Integration with PaymentCore
+## Integration con el Frontend
 
-Una vez autenticado, el flujo de pagos funciona exactamente igual:
+Una vez autenticado via `UserAuthManager`:
 
 ```kotlin
-// 1. Usuario inicia sesión social
-val session = paymentExample.loginWithGoogle(googleIdToken)
+// JWT disponible en cualquier módulo
+val jwt = UserAuthManager.getCurrentJwt()
 
-// 2. Usuario compra paquete
-val purchaseResult = paymentExample.purchasePackage("basic_pack_android")
-
-// 3. Backend valida con userId del JWT
-// 4. Detección de fraudes y procesamiento normal
+// PaymentCoreViewModel lo usa para validar compras
+val headers = AuthCoreManager.getHeaders("POST", "/api/v1/payments/validate/google-play", body, jwt)
 ```
 
 ## Benefits
@@ -369,13 +269,7 @@ val purchaseResult = paymentExample.purchasePackage("basic_pack_android")
 ### Backend Testing
 
 ```bash
-# Test Google authentication
-curl -X POST http://localhost:3000/api/v1/auth/google \
-  -H "Content-Type: application/json" \
-  -d '{"idToken": "test_google_token"}'
-
-# Test Apple authentication  
-curl -X POST http://localhost:3000/api/v1/auth/apple \
-  -H "Content-Type: application/json" \
-  -d '{"identityToken": "test_apple_token", "userInfo": {"name": "Test User", "email": "test@example.com"}}'
+# El endpoint requiere HMAC — usar la app Android para generar headers válidos.
+# Health check (sin HMAC):
+curl http://animatedsticker.com:22024/health
 ```

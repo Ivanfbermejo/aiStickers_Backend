@@ -7,8 +7,8 @@ Servicio de pagos con verificación real contra Google Play Developer API. Sopor
 ## Autenticación
 
 Todos los endpoints requieren dos capas:
-- **Firma HMAC de app** (`X-Client-ID`, `X-Timestamp`, `X-Signature`) — generada en el cliente con `CLIENT_SECRET`
-- **JWT de usuario** (`Authorization: Bearer <token>`) — obtenido tras login con Google/Apple
+- **Firma HMAC de app** (`X-App-Id`, `X-App-Timestamp`, `X-App-Nonce`, `X-App-Signature`) — generada por `:authcore` con HMAC-SHA256
+- **JWT de usuario** (`Authorization: Bearer <token>`) — obtenido tras login con Google
 
 ## Endpoints
 
@@ -17,7 +17,7 @@ Todos los endpoints requieren dos capas:
 #### Google Play
 ```
 POST /api/v1/payments/validate/google-play
-Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
 ```
 ```json
 {
@@ -44,7 +44,7 @@ Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
 #### Apple App Store
 ```
 POST /api/v1/payments/validate/apple-app-store
-Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
 ```
 ```json
 {
@@ -58,15 +58,20 @@ Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
 
 ```
 GET /api/v1/users/balance
-Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
 ```
 ```json
 { "balance": 25 }
 ```
 
 ```
+GET /api/v1/users/balance/history
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
+```
+
+```
 POST /api/v1/users/balance/spend
-Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
 ```
 ```json
 { "amount": 1 }
@@ -76,7 +81,7 @@ Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
 
 ```
 GET /api/v1/plans
-Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature, Authorization: Bearer <JWT>
 ```
 ```json
 [
@@ -91,11 +96,21 @@ Headers: X-Client-ID, X-Timestamp, X-Signature, Authorization: Bearer <JWT>
 ]
 ```
 
+### Traducciones
+
+```
+GET /api/v1/i18n/:lang
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature
+```
+```json
+{ "version": 1715000000000, "data": { "app_title": "AI Stickers", "buy_button": "Comprar" } }
+```
+
 ### Config (force update)
 
 ```
 GET /api/v1/config
-Headers: X-Client-ID, X-Timestamp, X-Signature
+Headers: X-App-Id, X-App-Timestamp, X-App-Nonce, X-App-Signature
 ```
 ```json
 {
@@ -107,7 +122,7 @@ Headers: X-Client-ID, X-Timestamp, X-Signature
   }
 }
 ```
-> Para forzar actualización: cambiar `forceUpdate: true` o subir `minVersion` en `src/controllers/config.controller.js`.
+> Para forzar actualización: cambiar `forceUpdate: true` o subir `minVersion` en `src/infrastructure/web/controllers/config.controller.js`.
 
 ## Storage
 

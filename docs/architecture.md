@@ -109,6 +109,7 @@ Implementaciones de repositorios usando JSON files:
 - `BalanceController`: Endpoints de balance y transacciones
 - `ConfigController`: Configuración pública
 - `PlanController`: Endpoints de planes de compra
+- `I18nController`: Traducciones vía POEditor proxy
 
 **Middleware**:
 - `HmacMiddleware`: Verificación de firma HMAC de la app (usa :authcore del frontend)
@@ -164,9 +165,13 @@ Todos los endpoints (excepto health check) requieren **dos factores**:
 | `GET /health` | ❌ | ❌ | Health check público |
 | `POST /api/v1/auth/token` | ✅ | ❌ | Generar App Token |
 | `POST /api/v1/auth/google` | ✅ | ❌ | Google Sign-In |
+| `GET /api/v1/auth/me` | ✅ | ✅ | Validar sesión |
+| `POST /api/v1/auth/logout` | ✅ | ✅ | Cerrar sesión |
 | `GET /api/v1/config` | ✅ | ❌ | Config pública |
+| `GET /api/v1/i18n/:lang` | ✅ | ❌ | Traducciones |
 | `GET /api/v1/plans` | ✅ | ✅ | Listar planes |
-| `POST /api/v1/payments/*` | ✅ | ✅ | Validar compras |
+| `POST /api/v1/payments/validate/google-play` | ✅ | ✅ | Validar compra Google Play |
+| `POST /api/v1/payments/validate/apple-app-store` | ✅ | ✅ | Validar compra App Store |
 | `GET /api/v1/users/balance` | ✅ | ✅ | Ver balance |
 | `POST /api/v1/users/balance/spend` | ✅ | ✅ | Gastar stickers |
 | `GET /api/v1/users/balance/history` | ✅ | ✅ | Historial |
@@ -262,7 +267,11 @@ aiStickers_Backend/
 │               ├── payment.controller.js
 │               ├── balance.controller.js
 │               ├── config.controller.js
-│               └── plan.controller.js
+│               ├── plan.controller.js
+│               └── i18n.controller.js
+│
+├── services/
+│   └── i18n.service.js          # POEditor proxy con caché
 │
 ├── data/                        # JSON data files
 │   ├── users.json
@@ -302,18 +311,6 @@ Testear endpoints completos con base de datos en memoria.
 
 ### E2E Tests
 Testear flujos completos desde el cliente.
-
-## Migration from Old Code
-
-El código anterior (`index-old.js`) fue unificado en la arquitectura limpia:
-
-| Old File | New Location |
-|----------|--------------|
-| `auth.controller.js` (old) | `src/infrastructure/web/controllers/auth.controller.js` |
-| `paymentCore.controller.js` | `src/infrastructure/web/controllers/payment.controller.js` |
-| `balance.simple.service.js` | `src/infrastructure/persistence/json/json-balance.repository.js` + `Balance` entity |
-| `auth.service.js` | `src/infrastructure/auth/jwt.service.js` |
-| `auth.middleware.js` | `src/infrastructure/web/middleware/auth.middleware.js` |
 
 ## Future Improvements
 
