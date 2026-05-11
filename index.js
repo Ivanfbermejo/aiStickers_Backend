@@ -72,7 +72,7 @@ container.initialize().then(() => {
   
   // Session Management (HMAC + User JWT)
   app.get('/api/v1/auth/me', requireHmac, requireAuth, AuthController.validateSession);
-  app.post('/api/v1/auth/refresh', requireHmac, requireAuth, AuthController.refreshToken);
+  app.post('/api/v1/auth/refresh', requireHmac, AuthController.refreshToken);
   app.post('/api/v1/auth/logout', requireHmac, requireAuth, AuthController.logout);
   
   // --- Configuration (HMAC only) ---
@@ -116,7 +116,7 @@ container.initialize().then(() => {
     console.log('  POST /api/v1/auth/token           (HMAC)        - App authentication');
     console.log('  POST /api/v1/auth/google          (HMAC)        - Google Sign-In');
     console.log('  GET  /api/v1/auth/me              (HMAC+User)   - Validate session');
-    console.log('  POST /api/v1/auth/refresh         (HMAC+User)   - Refresh JWT token');
+    console.log('  POST /api/v1/auth/refresh         (HMAC)        - Refresh JWT token');
     console.log('  POST /api/v1/auth/logout          (HMAC+User)   - Logout');
     console.log('  GET  /api/v1/config               (HMAC)        - Public config');
     console.log('  GET  /api/v1/i18n/:lang           (HMAC)        - Translations');
