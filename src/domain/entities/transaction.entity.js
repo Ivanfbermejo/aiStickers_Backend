@@ -1,3 +1,5 @@
+import { nanoid } from 'nanoid';
+
 /**
  * Transaction Entity - Purchase or spending record
  */

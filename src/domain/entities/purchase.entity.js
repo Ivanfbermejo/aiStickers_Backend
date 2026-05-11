@@ -1,3 +1,5 @@
+import { nanoid } from 'nanoid';
+
 /**
  * Purchase Entity - Validated purchase from store
  */
