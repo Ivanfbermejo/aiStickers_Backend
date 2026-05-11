@@ -82,6 +82,69 @@ export class AuthController {
   }
   
   /**
+   * Refresh Token
+   * POST /api/v1/auth/refresh
+   */
+  static async refreshToken(req, res) {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ 
+          error: 'Missing token',
+          message: 'Authorization Bearer token is required' 
+        });
+      }
+      
+      const token = authHeader.substring(7);
+      
+      // Verify token (allow expired for refresh)
+      let decoded;
+      try {
+        decoded = jwt.verify(token, env.JWT_SECRET, { ignoreExpiration: true });
+      } catch (error) {
+        return res.status(401).json({ 
+          error: 'Invalid token',
+          message: 'Token is malformed or invalid' 
+        });
+      }
+      
+      // Ensure it's a user token (not app token)
+      if (decoded.type !== 'user') {
+        return res.status(401).json({ 
+          error: 'Invalid token type',
+          message: 'Only user tokens can be refreshed' 
+        });
+      }
+      
+      // Generate new token with same claims but fresh timestamps
+      const newToken = jwt.sign(
+        {
+          sub: decoded.sub,
+          email: decoded.email,
+          name: decoded.name,
+          googleId: decoded.googleId,
+          type: 'user',
+          scope: decoded.scope || ['stickers']
+        },
+        env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+      
+      res.json({
+        success: true,
+        token: newToken,
+        expiresIn: '1h'
+      });
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      res.status(500).json({ 
+        error: 'Token refresh failed',
+        message: 'Internal server error' 
+      });
+    }
+  }
+  
+  /**
    * Logout
    * POST /api/v1/auth/logout
    */
