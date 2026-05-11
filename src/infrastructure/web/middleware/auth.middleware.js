@@ -43,6 +43,7 @@ export class AuthMiddleware {
    * Required for user-specific operations
    */
   verifyUserToken(req, res, next) {
+    console.log('🔐 verifyUserToken called for:', req.path);
     try {
       const authHeader = req.headers.authorization || '';
       

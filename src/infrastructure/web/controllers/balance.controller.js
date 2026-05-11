@@ -109,7 +109,7 @@ export class BalanceController {
    * GET /api/v1/users/me/assets
    */
   static async getUserAssets(req, res) {
-    console.log('🔍 getUserAssets called');
+    console.log('� getUserAssets HIT!!!');
     try {
       const userId = req.user.sub;
       console.log('🔍 userId:', userId);
