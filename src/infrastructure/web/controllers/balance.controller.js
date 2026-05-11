@@ -103,4 +103,30 @@ export class BalanceController {
       });
     }
   }
+  
+  /**
+   * Get User Assets (Balance + Stickers + Packages)
+   * GET /api/v1/users/me/assets
+   */
+  static async getUserAssets(req, res) {
+    try {
+      const userId = req.user.sub;
+      
+      const balance = await container.useCases.getBalance.execute({ userId });
+      
+      res.json({
+        success: true,
+        userId: userId,
+        balance: balance.stickerDollars,
+        stickers: [], // TODO: Implement sticker inventory
+        packages: []  // TODO: Implement purchased packages
+      });
+    } catch (error) {
+      console.error('Get user assets failed:', error);
+      res.status(500).json({
+        error: 'Failed to retrieve assets',
+        message: error.message
+      });
+    }
+  }
 }

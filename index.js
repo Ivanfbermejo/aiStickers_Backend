@@ -92,6 +92,7 @@ container.initialize().then(() => {
   app.get('/api/v1/users/balance', requireHmac, requireUser, BalanceController.getBalance);
   app.post('/api/v1/users/balance/spend', requireHmac, requireUser, BalanceController.spendBalance);
   app.get('/api/v1/users/balance/history', requireHmac, requireUser, BalanceController.getTransactionHistory);
+  app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
   
   // --- Error Handling ---
   app.use((err, req, res, next) => {
@@ -123,6 +124,7 @@ container.initialize().then(() => {
     console.log('  GET  /api/v1/plans                (HMAC+User)   - Purchase plans');
     console.log('  POST /api/v1/payments/validate/*  (HMAC+User)   - Validate purchases');
     console.log('  GET  /api/v1/users/balance        (HMAC+User)   - User balance');
+    console.log('  GET  /api/v1/users/me/assets     (HMAC+User)   - User assets (balance+stickers+packages)');
     console.log('  GET  /api/v1/users/balance/history (HMAC+User)  - Transaction history');
     console.log('\n🔒 Security: All endpoints require HMAC + User JWT for sensitive operations\n');
   });
