@@ -109,20 +109,28 @@ export class BalanceController {
    * GET /api/v1/users/me/assets
    */
   static async getUserAssets(req, res) {
+    console.log('🔍 getUserAssets called');
     try {
       const userId = req.user.sub;
+      console.log('🔍 userId:', userId);
       
+      console.log('🔍 Getting balance...');
       const balance = await container.useCases.getBalance.execute({ userId });
+      console.log('🔍 Balance result:', balance);
       
-      res.json({
+      const response = {
         success: true,
         userId: userId,
         balance: balance.stickerDollars,
         stickers: [], // TODO: Implement sticker inventory
         packages: []  // TODO: Implement purchased packages
-      });
+      };
+      
+      console.log('🔍 Sending response:', response);
+      res.json(response);
     } catch (error) {
-      console.error('Get user assets failed:', error);
+      console.error('❌ Get user assets failed:', error);
+      console.error('❌ Error stack:', error.stack);
       res.status(500).json({
         error: 'Failed to retrieve assets',
         message: error.message
