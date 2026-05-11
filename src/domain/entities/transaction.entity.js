@@ -64,7 +64,7 @@ export class Transaction {
   
   static createSpend({ userId, amount, productId, balanceAfter, metadata }) {
     return new Transaction({
-      id: crypto.randomUUID(),
+      id: nanoid(),
       userId,
       type: 'SPEND',
       amount,

@@ -52,7 +52,7 @@ export class Purchase {
   
   static create({ userId, productId, purchaseToken, provider, stickerAmount }) {
     return new Purchase({
-      id: crypto.randomUUID(),
+      id: nanoid(),
       userId,
       productId,
       purchaseToken,
