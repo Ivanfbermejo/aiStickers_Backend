@@ -27,6 +27,17 @@ export class PaymentController {
         purchaseToken,
         provider: 'GOOGLE_PLAY'
       });
+
+      if (result.pending) {
+        return res.json({
+          success: false,
+          pending: true,
+          transactionId: result.transactionId,
+          amount: result.amount,
+          newBalance: result.newBalance,
+          message: result.message
+        });
+      }
       
       res.json({
         success: true,

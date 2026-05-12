@@ -117,23 +117,18 @@ export class AuthController {
       }
       
       // Generate new token with same claims but fresh timestamps
+      // Remove exp and iat from decoded to avoid JWT conflicts
+      const { exp, iat, ...payload } = decoded;
       const newToken = jwt.sign(
-        {
-          sub: decoded.sub,
-          email: decoded.email,
-          name: decoded.name,
-          googleId: decoded.googleId,
-          type: 'user',
-          scope: decoded.scope || ['stickers']
-        },
+        payload,
         env.JWT_SECRET,
-        { expiresIn: '1h' }
+        { expiresIn: '7d' }
       );
       
       res.json({
         success: true,
         token: newToken,
-        expiresIn: '1h'
+        expiresIn: '7d'
       });
     } catch (error) {
       console.error('Token refresh failed:', error);

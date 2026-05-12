@@ -75,6 +75,33 @@ export class ValidatePurchaseUseCase {
       provider
     });
     
+    if (validationResult.pending) {
+      // Store as pending transaction — do NOT credit balance yet
+      const transaction = Transaction.createPurchase({
+        userId,
+        amount: stickerAmount,
+        productId,
+        provider,
+        providerTransactionId: purchaseToken,
+        balanceAfter: null,
+        metadata: {
+          status: 'PENDING',
+          fraudFlags: fraudAnalysis.flags,
+          riskScore: fraudAnalysis.riskScore
+        }
+      });
+      await this.transactionRepository.save(transaction);
+      const balance = await this.balanceRepository.findByUserId(userId);
+      return {
+        success: false,
+        pending: true,
+        transactionId: transaction.id,
+        amount: stickerAmount,
+        newBalance: balance?.stickerDollars || 0,
+        message: 'Purchase is being verified. Balance will update once confirmed.'
+      };
+    }
+
     if (!validationResult.valid) {
       throw new Error(validationResult.error || 'Purchase validation failed');
     }

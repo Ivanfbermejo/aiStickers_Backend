@@ -80,23 +80,31 @@ export class BalanceController {
    * GET /api/v1/users/balance/history
    */
   static async getTransactionHistory(req, res) {
+    console.log('🔍 getTransactionHistory called');
     try {
       const userId = req.user.sub;
+      console.log('🔍 userId:', userId);
       const limit = parseInt(req.query.limit) || 50;
+      console.log('🔍 limit:', limit);
       
+      console.log('🔍 Getting transaction history...');
       const history = await container.useCases.getTransactionHistory.execute({
         userId,
         limit
       });
+      console.log('🔍 History result:', history);
       
-      res.json({
+      const response = {
         success: true,
         userId: history.userId,
         transactions: history.transactions,
         count: history.count
-      });
+      };
+      console.log('🔍 Sending history response:', response);
+      res.json(response);
     } catch (error) {
-      console.error('Get transaction history failed:', error);
+      console.error('❌ Get transaction history failed:', error);
+      console.error('❌ Error stack:', error.stack);
       res.status(500).json({
         error: 'Failed to retrieve history',
         message: error.message

@@ -61,6 +61,19 @@ export class JwtService {
   }
   
   /**
+   * Verify JWT token ignoring expiration
+   * @param {string} token - JWT token
+   * @returns {Object} Decoded token
+   */
+  verifyWithoutExpiration(token) {
+    try {
+      return jwt.verify(token, this.secret, { ignoreExpiration: true });
+    } catch (error) {
+      throw new Error('Invalid token');
+    }
+  }
+  
+  /**
    * Decode token without verification
    * @param {string} token - JWT token
    * @returns {Object} Decoded payload

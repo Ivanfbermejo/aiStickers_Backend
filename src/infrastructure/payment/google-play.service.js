@@ -43,14 +43,15 @@ export class GooglePlayPaymentService {
    * @returns {Object} Validation result
    */
   async validatePurchase({ productId, purchaseToken }) {
-    // Test mode - accept all purchases (for development)
+    // Test mode — GOOGLE_PLAY_SERVICE_ACCOUNT not configured.
+    // Cannot verify real purchase state with Google Play API.
+    // Return pending=true so balance is NOT credited until real validation is possible.
     if (this.isTestMode) {
-      console.log(`[GooglePlay] Test mode: Accepting purchase ${productId}`);
+      console.warn(`[GooglePlay] ⚠️ No service account configured — cannot validate purchase ${productId}. Returning pending.`);
       return {
-        valid: true,
-        purchaseState: 0, // PURCHASED
-        consumptionState: 0, // NOT_CONSUMED
-        acknowledgementState: 0 // NOT_ACKNOWLEDGED
+        valid: false,
+        pending: true,
+        error: 'Google Play validation pending: GOOGLE_PLAY_SERVICE_ACCOUNT not configured'
       };
     }
     
@@ -62,18 +63,47 @@ export class GooglePlayPaymentService {
       });
       
       const purchase = response.data;
+      const isPurchased = purchase.purchaseState === 0; // 0 = PURCHASED, 2 = PENDING
       
+      console.log(`[GooglePlay] Purchase ${productId} state=${purchase.purchaseState} orderId=${purchase.orderId}`);
+      
+      if (!isPurchased) {
+        return {
+          valid: false,
+          pending: purchase.purchaseState === 2,
+          purchaseState: purchase.purchaseState,
+          error: `Purchase not completed. State: ${purchase.purchaseState}`
+        };
+      }
+
       return {
-        valid: purchase.purchaseState === 0, // 0 = PURCHASED
+        valid: true,
         purchaseState: purchase.purchaseState,
         consumptionState: purchase.consumptionState,
         acknowledgementState: purchase.acknowledgementState,
         orderId: purchase.orderId
       };
     } catch (error) {
-      console.error('Google Play validation failed:', error);
+      const status = error?.response?.status;
+      const isNotFound = status === 404;
+      const isDebugBuild = error?.message?.includes('invalid') || isNotFound;
+      
+      console.error(`[GooglePlay] Validation error (status=${status}): ${error.message}`);
+      
+      // 404 = token not found in GP servers = debug/sideloaded build
+      // Treat as pending so balance is not credited but purchase is not lost
+      if (isDebugBuild) {
+        console.warn(`[GooglePlay] ⚠️ Token not found in Google Play — likely a debug/sideloaded build. Treating as pending.`);
+        return {
+          valid: false,
+          pending: true,
+          error: 'Purchase token not found in Google Play (debug build?)'
+        };
+      }
+      
       return {
         valid: false,
+        pending: false,
         error: error.message
       };
     }
