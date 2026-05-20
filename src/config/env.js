@@ -43,6 +43,11 @@ export const env = {
   POEDITOR_API_TOKEN: process.env.POEDITOR_API_TOKEN,
   POEDITOR_PROJECT_ID: process.env.POEDITOR_PROJECT_ID,
 
+  // Replicate AI
+  REPLICATE_API_TOKEN: process.env.REPLICATE_API_TOKEN,
+  REPLICATE_MODEL: process.env.REPLICATE_MODEL || "google/nano-banana",
+  REPLICATE_IMG2VID_MODEL: process.env.REPLICATE_IMG2VID_MODEL || "bytedance/seedance-1-pro",
+
   // HMAC window
   SIG_WINDOW_SEC: Number(process.env.SIG_WINDOW_SEC || 300)
 };

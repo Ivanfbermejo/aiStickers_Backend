@@ -9,6 +9,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import bodyParser from 'body-parser';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 // Configuration
 import { env, validateEnv } from './src/config/env.js';
@@ -25,6 +28,7 @@ import { BalanceController } from './src/infrastructure/web/controllers/balance.
 import { ConfigController } from './src/infrastructure/web/controllers/config.controller.js';
 import { PlanController } from './src/infrastructure/web/controllers/plan.controller.js';
 import { I18nController } from './src/infrastructure/web/controllers/i18n.controller.js';
+import { AiController } from './src/infrastructure/web/controllers/ai.controller.js';
 
 // Initialize
 const app = express();
@@ -41,6 +45,33 @@ app.use(cors({
 
 // Security headers
 app.use(helmet());
+
+// Configure multer for file uploads
+const uploadsDir = path.join(env.DATA_DIR, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'upload-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    // Accept only images
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
 app.use(bodyParser.json({
@@ -94,6 +125,11 @@ container.initialize().then(() => {
   app.get('/api/v1/users/balance/history', requireHmac, requireUser, BalanceController.getTransactionHistory);
   app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
   
+  // --- AI Sticker Generation (HMAC + User JWT required) ---
+  app.post('/api/v1/ai/process-image', requireHmac, requireUser, upload.single('image'), AiController.processImage);
+  app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
+  app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
+  
   // --- Error Handling ---
   app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
@@ -126,6 +162,9 @@ container.initialize().then(() => {
     console.log('  GET  /api/v1/users/balance        (HMAC+User)   - User balance');
     console.log('  GET  /api/v1/users/me/assets     (HMAC+User)   - User assets (balance+stickers+packages)');
     console.log('  GET  /api/v1/users/balance/history (HMAC+User)  - Transaction history');
+    console.log('  POST /api/v1/ai/process-image     (HMAC+User)   - Generate sticker from image');
+    console.log('  POST /api/v1/ai/img2vid           (HMAC+User)   - Generate video from image');
+    console.log('  GET  /api/v1/ai/status/:id        (HMAC+User)   - Check generation status');
     console.log('\n🔒 Security: All endpoints require HMAC + User JWT for sensitive operations\n');
   });
 });
