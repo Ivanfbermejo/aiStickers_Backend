@@ -3,6 +3,7 @@ import { JsonBalanceRepository } from '../infrastructure/persistence/json/json-b
 import { JsonTransactionRepository } from '../infrastructure/persistence/json/json-transaction.repository.js';
 import { JsonPurchaseRepository } from '../infrastructure/persistence/json/json-purchase.repository.js';
 import { JsonStickerRepository } from '../infrastructure/persistence/json/json-sticker.repository.js';
+import { JsonPackageRepository } from '../infrastructure/persistence/json/json-package.repository.js';
 
 import { JwtService } from '../infrastructure/auth/jwt.service.js';
 import { GoogleAuthService } from '../infrastructure/auth/google-auth.service.js';
@@ -42,6 +43,7 @@ export class Container {
     this.repositories.transaction = new JsonTransactionRepository(env.DATA_DIR);
     this.repositories.purchase = new JsonPurchaseRepository(env.DATA_DIR);
     this.repositories.sticker = new JsonStickerRepository(env.DATA_DIR);
+    this.repositories.package = new JsonPackageRepository(env.DATA_DIR);
     
     // Services (Infrastructure)
     this.services.jwt = new JwtService();
