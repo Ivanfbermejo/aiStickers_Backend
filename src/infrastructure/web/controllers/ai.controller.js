@@ -1,5 +1,6 @@
 import { container } from '../../../config/container.js';
 import { runStickerModel, runImageToVideo } from '../../../application/services/replicate.service.js';
+import { Sticker } from '../../../domain/entities/sticker.entity.js';
 
 /**
  * AI Controller
@@ -63,15 +64,33 @@ export class AiController {
       // Default prompt for stickers
       const finalPrompt = (prompt?.trim()) || "clean sticker with white border, high contrast, professional quality";
       
+      // Create sticker entity before processing
+      const sticker = Sticker.createFromGeneration({
+        userId,
+        packageId: req.body?.packageId || null,
+        name: req.file?.originalname?.split('.')[0] || 'Generated Sticker',
+        prompt: finalPrompt,
+        cost: stickerCost
+      });
+      
+      // Save initial sticker (processing state)
+      await container.repositories.sticker.save(sticker);
+      
       // Call Replicate API
       const { url: generatedUrl, id, web } = await runStickerModel(imageUrl, finalPrompt);
+      
+      // Update sticker with result
+      sticker.markAsDone(generatedUrl, web);
+      sticker.replicateId = id;
+      await container.repositories.sticker.update(sticker);
 
       // Return success response
       return res.json({
         success: true,
+        stickerId: sticker.id,
         imageUrl: generatedUrl,
+        thumbnailUrl: web,
         replicateId: id,
-        web,
         cost: stickerCost,
         remainingBalance: balance.stickerDollars - stickerCost
       });
