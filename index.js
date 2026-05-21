@@ -29,6 +29,8 @@ import { ConfigController } from './src/infrastructure/web/controllers/config.co
 import { PlanController } from './src/infrastructure/web/controllers/plan.controller.js';
 import { I18nController } from './src/infrastructure/web/controllers/i18n.controller.js';
 import { AiController } from './src/infrastructure/web/controllers/ai.controller.js';
+import { StickerController } from './src/infrastructure/web/controllers/sticker.controller.js';
+import { PackageController } from './src/infrastructure/web/controllers/package.controller.js';
 
 // Initialize
 const app = express();
@@ -130,6 +132,22 @@ container.initialize().then(() => {
   app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
   app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
   
+  // --- Stickers CRUD (HMAC + User JWT required) ---
+  app.get('/api/v1/stickers', requireHmac, requireUser, StickerController.getUserStickers);
+  app.get('/api/v1/stickers/package/:packageId', requireHmac, requireUser, StickerController.getStickersByPackage);
+  app.get('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.getStickerById);
+  app.post('/api/v1/stickers', requireHmac, requireUser, StickerController.createSticker);
+  app.put('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.updateSticker);
+  app.delete('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.deleteSticker);
+  
+  // --- Packages CRUD (HMAC + User JWT required) ---
+  app.get('/api/v1/packages', requireHmac, requireUser, PackageController.getUserPackages);
+  app.get('/api/v1/packages/public', requireHmac, PackageController.getPublicPackages);
+  app.get('/api/v1/packages/:id', requireHmac, requireUser, PackageController.getPackageById);
+  app.post('/api/v1/packages', requireHmac, requireUser, PackageController.createPackage);
+  app.put('/api/v1/packages/:id', requireHmac, requireUser, PackageController.updatePackage);
+  app.delete('/api/v1/packages/:id', requireHmac, requireUser, PackageController.deletePackage);
+  
   // --- Error Handling ---
   app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
@@ -165,6 +183,17 @@ container.initialize().then(() => {
     console.log('  POST /api/v1/ai/process-image     (HMAC+User)   - Generate sticker from image');
     console.log('  POST /api/v1/ai/img2vid           (HMAC+User)   - Generate video from image');
     console.log('  GET  /api/v1/ai/status/:id        (HMAC+User)   - Check generation status');
+    console.log('  GET  /api/v1/stickers             (HMAC+User)   - List user stickers');
+    console.log('  GET  /api/v1/stickers/:id         (HMAC+User)   - Get sticker by ID');
+    console.log('  POST /api/v1/stickers             (HMAC+User)   - Create sticker manually');
+    console.log('  PUT  /api/v1/stickers/:id         (HMAC+User)   - Update sticker');
+    console.log('  DEL  /api/v1/stickers/:id         (HMAC+User)   - Delete sticker');
+    console.log('  GET  /api/v1/packages             (HMAC+User)   - List user packages');
+    console.log('  GET  /api/v1/packages/public      (HMAC)        - List public packages');
+    console.log('  GET  /api/v1/packages/:id         (HMAC+User)   - Get package by ID');
+    console.log('  POST /api/v1/packages             (HMAC+User)   - Create package');
+    console.log('  PUT  /api/v1/packages/:id         (HMAC+User)   - Update package');
+    console.log('  DEL  /api/v1/packages/:id         (HMAC+User)   - Delete package');
     console.log('\n🔒 Security: All endpoints require HMAC + User JWT for sensitive operations\n');
   });
 });
