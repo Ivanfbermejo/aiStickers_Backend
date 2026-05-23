@@ -2,6 +2,7 @@
  * Replicate Service
  * Handles AI image generation via Replicate API
  */
+import fetch from 'node-fetch';
 import { env } from '../../config/env.js';
 
 /**
