@@ -54,8 +54,19 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Use memoryStorage for now to avoid file permission issues
-const storage = multer.memoryStorage();
+// Use diskStorage so files have proper filenames and can be served
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    console.log('[Multer] 📁 Saving to:', uploadsDir);
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const filename = 'upload-' + uniqueSuffix + path.extname(file.originalname);
+    console.log('[Multer] 📝 Filename:', filename);
+    cb(null, filename);
+  }
+});
 
 const upload = multer({ 
   storage,
@@ -81,6 +92,10 @@ const upload = multer({
     }
   }
 });
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(uploadsDir));
+console.log('📁 Serving uploads from:', uploadsDir);
 
 // JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
 // NOTE: This only applies to JSON requests, multipart is handled separately
