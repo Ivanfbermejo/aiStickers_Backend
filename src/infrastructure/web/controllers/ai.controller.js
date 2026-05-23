@@ -15,9 +15,15 @@ export class AiController {
    */
   static async processImage(req, res) {
     try {
+      console.log('[AI Controller] processImage called');
+      console.log('[AI Controller] req.file:', req.file ? { name: req.file.originalname, size: req.file.size, mimetype: req.file.mimetype } : 'undefined');
+      console.log('[AI Controller] req.body:', req.body);
+      console.log('[AI Controller] Content-Type:', req.headers['content-type']);
+      
       const { prompt } = req.body || {};
       
       if (!req.file && !req.body?.imageUrl) {
+        console.log('[AI Controller] ❌ No file and no imageUrl');
         return res.status(400).json({ 
           error: 'No image provided',
           message: 'Upload an image file or provide imageUrl'

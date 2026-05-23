@@ -76,12 +76,20 @@ const upload = multer({
 });
 
 // JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
-app.use(bodyParser.json({
-  limit: '5mb',
-  verify: (req, res, buf) => {
-    req.rawBody = buf; // Keep as Buffer for correct hash calculation
+// NOTE: This only applies to JSON requests, multipart is handled separately
+app.use((req, res, next) => {
+  // Skip body parsing for multipart requests - let multer handle them
+  if (req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
   }
-}));
+  // For JSON and other requests, use standard body parser
+  bodyParser.json({
+    limit: '5mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    }
+  })(req, res, next);
+});
 
 // Initialize dependency container
 container.initialize().then(() => {
@@ -128,7 +136,20 @@ container.initialize().then(() => {
   app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
   
   // --- AI Sticker Generation (HMAC + User JWT required) ---
-  app.post('/api/v1/ai/process-image', requireHmac, requireUser, upload.single('image'), AiController.processImage);
+  // Multer error handler wrapper
+  const handleMulterError = (err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+      console.error('[Multer Error]', err.code, err.message);
+      return res.status(400).json({ error: 'File upload error', message: err.message });
+    }
+    if (err) {
+      console.error('[Upload Error]', err.message);
+      return res.status(400).json({ error: 'Upload error', message: err.message });
+    }
+    next();
+  };
+  
+  app.post('/api/v1/ai/process-image', requireHmac, requireUser, upload.single('image'), handleMulterError, AiController.processImage);
   app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
   app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
   
