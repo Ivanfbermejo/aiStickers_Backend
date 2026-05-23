@@ -57,7 +57,11 @@ export class HmacMiddleware {
       // Construimos mensaje canónico (exact copy from clientSign.middleware.js)
       const method = req.method.toUpperCase();
       const path = req.originalUrl.split('?')[0];
-      const raw = req.rawBody ?? Buffer.from('');
+      
+      // Para multipart/form-data (file uploads), usar body vacío porque
+      // multer consume el stream y rawBody no está disponible
+      const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
+      const raw = isMultipart ? Buffer.from('') : (req.rawBody ?? Buffer.from(''));
       const bodyHash = sha256Hex(raw);
 
       const msg = `${t}.${n}.${method}.${path}.${bodyHash}`;
