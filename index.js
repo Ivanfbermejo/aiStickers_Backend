@@ -59,7 +59,12 @@ const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB file limit
+    fieldSize: 15 * 1024 * 1024, // 15MB field limit (for base64)
+    fields: 10,
+    files: 1
+  },
   fileFilter: (req, file, cb) => {
     console.log('[Multer] 🔍 File received:', {
       fieldname: file.fieldname,
