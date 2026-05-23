@@ -78,11 +78,16 @@ const upload = multer({
 // JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
 // NOTE: This only applies to JSON requests, multipart is handled separately
 app.use((req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  console.log(`[BodyParser] ${req.method} ${req.path} Content-Type: ${contentType}`);
+  
   // Skip body parsing for multipart requests - let multer handle them
-  if (req.headers['content-type']?.includes('multipart/form-data')) {
+  if (contentType.includes('multipart/form-data')) {
+    console.log('[BodyParser] ⏭️ Skipping JSON parser for multipart');
     return next();
   }
   // For JSON and other requests, use standard body parser
+  console.log('[BodyParser] 📄 Using JSON parser');
   bodyParser.json({
     limit: '5mb',
     verify: (req, res, buf) => {
@@ -136,6 +141,14 @@ container.initialize().then(() => {
   app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
   
   // --- AI Sticker Generation (HMAC + User JWT required) ---
+  // Debug middleware to track request flow
+  const logRequestFlow = (req, res, next) => {
+    console.log('[RequestFlow] 📥 Reached multer middleware');
+    console.log('[RequestFlow] Content-Type:', req.headers['content-type']);
+    console.log('[RequestFlow] Content-Length:', req.headers['content-length']);
+    next();
+  };
+  
   // Multer error handler wrapper
   const handleMulterError = (err, req, res, next) => {
     if (err instanceof multer.MulterError) {
@@ -146,10 +159,11 @@ container.initialize().then(() => {
       console.error('[Upload Error]', err.message);
       return res.status(400).json({ error: 'Upload error', message: err.message });
     }
+    console.log('[RequestFlow] ✅ Multer completed, req.file:', req.file ? 'present' : 'undefined');
     next();
   };
   
-  app.post('/api/v1/ai/process-image', requireHmac, requireUser, upload.single('image'), handleMulterError, AiController.processImage);
+  app.post('/api/v1/ai/process-image', requireHmac, requireUser, logRequestFlow, upload.single('image'), handleMulterError, AiController.processImage);
   app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
   app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
   
