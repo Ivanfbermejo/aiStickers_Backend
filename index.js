@@ -54,22 +54,24 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'upload-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Use memoryStorage for now to avoid file permission issues
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
+    console.log('[Multer] 🔍 File received:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype
+    });
     // Accept only images
     if (file.mimetype.startsWith('image/')) {
+      console.log('[Multer] ✅ Image accepted');
       cb(null, true);
     } else {
+      console.log('[Multer] ❌ Rejected - not an image');
       cb(new Error('Only image files are allowed'));
     }
   }
