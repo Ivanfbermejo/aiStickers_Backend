@@ -62,9 +62,10 @@ export class AiController {
       // Get image URL (from file upload or provided URL)
       let imageUrl = req.body?.imageUrl;
       if (req.file) {
-        // For now, we need a way to serve the uploaded file publicly
-        // This is a placeholder - in production, upload to S3/Cloudinary
-        imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        // Convert buffer to base64 data URI — works without public URL
+        const b64 = req.file.buffer.toString('base64');
+        imageUrl = `data:${req.file.mimetype};base64,${b64}`;
+        console.log('[AI Controller] 🖼️ Image converted to base64 data URI, size:', req.file.size);
       }
 
       // Default prompt for stickers

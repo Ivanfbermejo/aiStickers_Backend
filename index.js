@@ -54,22 +54,9 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Use diskStorage so files have proper filenames and can be served
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    console.log('[Multer] 📁 Saving to:', uploadsDir);
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const filename = 'upload-' + uniqueSuffix + path.extname(file.originalname);
-    console.log('[Multer] 📝 Filename:', filename);
-    cb(null, filename);
-  }
-});
-
+// Use memoryStorage — image buffer sent directly to Replicate as base64 data URI
 const upload = multer({ 
-  storage,
+  storage: multer.memoryStorage(),
   limits: { 
     fileSize: 10 * 1024 * 1024, // 10MB file limit
     fieldSize: 15 * 1024 * 1024, // 15MB field limit (for base64)
