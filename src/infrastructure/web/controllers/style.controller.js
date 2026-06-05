@@ -35,13 +35,13 @@ export class StyleController {
           id: "love",
           emoji: "💘",
           name: "Amor Pixar",
-          prompt: "Transform the person in the photo into a cute Pixar-style character deeply in love, with big sparkling eyes, rosy cheeks, and heart-shaped particles floating around them"
+          prompt: "Transform the person in the photo into a cute Pixar-style character deeply in love, preserving their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add big sparkling eyes, rosy cheeks, and heart-shaped particles floating around them. Keep the face recognizable and faithful to the original person."
         },
         {
           id: "disney",
           emoji: "👑",
           name: "Príncipe/Princesa Disney",
-          prompt: "Transform the person in the photo into a Disney prince or princess with elegant royal attire, magical sparkles, long flowing hair, and a fairytale castle background"
+          prompt: "Transform the person in the photo into a Disney prince or princess while maintaining their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add elegant royal attire, magical sparkles, long flowing hair, and a fairytale castle background. Ensure the face remains perfectly recognizable and faithful to the original person."
         }
       ];
       

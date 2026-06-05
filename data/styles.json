@@ -4,49 +4,49 @@
       "id": "love",
       "emoji": "💘",
       "name": "Amor Pixar",
-      "prompt": "Transform the person in the photo into a cute Pixar-style character deeply in love, with big sparkling eyes, rosy cheeks, and heart-shaped particles floating around them"
+      "prompt": "Transform the person in the photo into a cute Pixar-style character deeply in love, preserving their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add big sparkling eyes, rosy cheeks, and heart-shaped particles floating around them. Keep the face recognizable and faithful to the original person."
     },
     {
       "id": "disney",
       "emoji": "👑",
       "name": "Príncipe/Princesa Disney",
-      "prompt": "Transform the person in the photo into a Disney prince or princess with elegant royal attire, magical sparkles, long flowing hair, and a fairytale castle background"
+      "prompt": "Transform the person in the photo into a Disney prince or princess while maintaining their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add elegant royal attire, magical sparkles, long flowing hair, and a fairytale castle background. Ensure the face remains perfectly recognizable and faithful to the original person."
     },
     {
       "id": "minecraft",
       "emoji": "⛏️",
       "name": "Personaje Minecraft",
-      "prompt": "Transform the person in the photo into a Minecraft character with blocky pixelated style, square head, cubic body, and the classic Minecraft world textures and colors"
+      "prompt": "Transform the person in the photo into a Minecraft character with blocky pixelated style, square head, cubic body, and the classic Minecraft world textures and colors. Preserve their recognizable facial features, hair style and color, and distinctive characteristics within the blocky style constraints. Keep the character clearly identifiable as the original person."
     },
     {
       "id": "witch",
       "emoji": "🧙‍♀️",
       "name": "Bruja Mágica",
-      "prompt": "Transform the person in the photo into a mystical witch with a pointed hat, magical glowing eyes, flowing dark robes, holding a magic wand with sparkling stars"
+      "prompt": "Transform the person in the photo into a mystical witch while maintaining their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add a pointed hat, magical glowing eyes, flowing dark robes, holding a magic wand with sparkling stars. Ensure the face remains perfectly recognizable and faithful to the original person."
     },
     {
       "id": "marvel",
       "emoji": "🦸",
       "name": "Superhéroe Marvel",
-      "prompt": "Transform the person in the photo into a Marvel superhero with a bold colorful costume, dynamic heroic pose, energy powers glowing from their hands, and a city skyline behind"
+      "prompt": "Transform the person in the photo into a Marvel superhero while preserving their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add a bold colorful costume, dynamic heroic pose, energy powers glowing from their hands, and a city skyline behind. Keep the face perfectly recognizable and faithful to the original person."
     },
     {
       "id": "ghibli",
       "emoji": "🌊",
       "name": "Anime Ghibli",
-      "prompt": "Transform the person in the photo into a Studio Ghibli anime character with soft watercolor style, expressive large eyes, gentle smile, surrounded by nature and floating spirits"
+      "prompt": "Transform the person in the photo into a Studio Ghibli anime character while maintaining their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Use soft watercolor style, expressive large eyes, gentle smile, surrounded by nature and floating spirits. Ensure the character remains clearly recognizable as the original person."
     },
     {
       "id": "cyborg",
       "emoji": "🤖",
       "name": "Cyborg Futurista",
-      "prompt": "Transform the person in the photo into a futuristic cyberpunk cyborg with glowing neon implants, metallic skin parts, LED eyes, and a neon-lit city background"
+      "prompt": "Transform the person in the photo into a futuristic cyberpunk cyborg while preserving their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add glowing neon implants, metallic skin parts, LED eyes, and a neon-lit city background. Ensure the face remains perfectly recognizable and faithful to the original person."
     },
     {
       "id": "villain",
       "emoji": "🎭",
       "name": "Villano de Película",
-      "prompt": "Transform the person in the photo into a dramatic movie villain with an elegant dark suit, sinister smile, dramatic lighting, and an ominous atmospheric background"
+      "prompt": "Transform the person in the photo into a dramatic movie villain while maintaining their exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Add an elegant dark suit, sinister smile, dramatic lighting, and an ominous atmospheric background. Keep the face perfectly recognizable and faithful to the original person."
     }
   ]
 }

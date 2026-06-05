@@ -68,8 +68,8 @@ export class AiController {
         console.log('[AI Controller] 🖼️ Image converted to base64 data URI, size:', req.file.size);
       }
 
-      // Default prompt for stickers
-      const finalPrompt = (prompt?.trim()) || "clean sticker with white border, high contrast, professional quality";
+      // Default prompt for stickers with facial fidelity
+      const finalPrompt = (prompt?.trim()) || "clean sticker with white border, high contrast, professional quality, preserving exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Keep the face perfectly recognizable and faithful to the original person.";
       
       // Create sticker entity before processing
       const sticker = Sticker.createFromGeneration({
