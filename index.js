@@ -31,6 +31,7 @@ import { I18nController } from './src/infrastructure/web/controllers/i18n.contro
 import { AiController } from './src/infrastructure/web/controllers/ai.controller.js';
 import { StickerController } from './src/infrastructure/web/controllers/sticker.controller.js';
 import { PackageController } from './src/infrastructure/web/controllers/package.controller.js';
+import { StyleController } from './src/infrastructure/web/controllers/style.controller.js';
 
 // Initialize
 const app = express();
@@ -191,6 +192,9 @@ container.initialize().then(() => {
   app.post('/api/v1/packages', requireHmac, requireUser, PackageController.createPackage);
   app.put('/api/v1/packages/:id', requireHmac, requireUser, PackageController.updatePackage);
   app.delete('/api/v1/packages/:id', requireHmac, requireUser, PackageController.deletePackage);
+  
+  // --- Styles (HMAC only - public endpoint) ---
+  app.get('/api/v1/styles', requireHmac, StyleController.getStyles);
   
   // --- Error Handling ---
   app.use((err, req, res, next) => {

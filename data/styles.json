@@ -1,0 +1,52 @@
+{
+  "styles": [
+    {
+      "id": "love",
+      "emoji": "💘",
+      "name": "Amor Pixar",
+      "prompt": "Transform the person in the photo into a cute Pixar-style character deeply in love, with big sparkling eyes, rosy cheeks, and heart-shaped particles floating around them"
+    },
+    {
+      "id": "disney",
+      "emoji": "👑",
+      "name": "Príncipe/Princesa Disney",
+      "prompt": "Transform the person in the photo into a Disney prince or princess with elegant royal attire, magical sparkles, long flowing hair, and a fairytale castle background"
+    },
+    {
+      "id": "minecraft",
+      "emoji": "⛏️",
+      "name": "Personaje Minecraft",
+      "prompt": "Transform the person in the photo into a Minecraft character with blocky pixelated style, square head, cubic body, and the classic Minecraft world textures and colors"
+    },
+    {
+      "id": "witch",
+      "emoji": "🧙‍♀️",
+      "name": "Bruja Mágica",
+      "prompt": "Transform the person in the photo into a mystical witch with a pointed hat, magical glowing eyes, flowing dark robes, holding a magic wand with sparkling stars"
+    },
+    {
+      "id": "marvel",
+      "emoji": "🦸",
+      "name": "Superhéroe Marvel",
+      "prompt": "Transform the person in the photo into a Marvel superhero with a bold colorful costume, dynamic heroic pose, energy powers glowing from their hands, and a city skyline behind"
+    },
+    {
+      "id": "ghibli",
+      "emoji": "🌊",
+      "name": "Anime Ghibli",
+      "prompt": "Transform the person in the photo into a Studio Ghibli anime character with soft watercolor style, expressive large eyes, gentle smile, surrounded by nature and floating spirits"
+    },
+    {
+      "id": "cyborg",
+      "emoji": "🤖",
+      "name": "Cyborg Futurista",
+      "prompt": "Transform the person in the photo into a futuristic cyberpunk cyborg with glowing neon implants, metallic skin parts, LED eyes, and a neon-lit city background"
+    },
+    {
+      "id": "villain",
+      "emoji": "🎭",
+      "name": "Villano de Película",
+      "prompt": "Transform the person in the photo into a dramatic movie villain with an elegant dark suit, sinister smile, dramatic lighting, and an ominous atmospheric background"
+    }
+  ]
+}
