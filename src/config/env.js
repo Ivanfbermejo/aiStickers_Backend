@@ -18,7 +18,7 @@ export const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   
   // JWT
-  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key',
+  JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
   
   // Google Auth
@@ -49,12 +49,15 @@ export const env = {
   REPLICATE_IMG2VID_MODEL: process.env.REPLICATE_IMG2VID_MODEL || "bytedance/seedance-1-pro",
 
   // HMAC window
-  SIG_WINDOW_SEC: Number(process.env.SIG_WINDOW_SEC || 300)
+  SIG_WINDOW_SEC: Number(process.env.SIG_WINDOW_SEC || 300),
+
+  // Telegram Bot
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
 };
 
 // Validation
 export function validateEnv() {
-  const required = ['JWT_SECRET', 'CLIENT_SECRET'];
+  const required = ['JWT_SECRET', 'CLIENT_SECRET', 'TELEGRAM_BOT_TOKEN'];
   const missing = required.filter(key => !env[key]);
   
   if (missing.length > 0) {

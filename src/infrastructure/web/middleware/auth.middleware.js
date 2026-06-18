@@ -57,7 +57,6 @@ export class AuthMiddleware {
       }
       
       const token = authHeader.substring(7);
-      console.log('🔐 token length:', token.length);
       
       // Try to verify with expiration check first
       let decoded;
@@ -65,9 +64,7 @@ export class AuthMiddleware {
         decoded = this.jwtService.verify(token);
       } catch (expError) {
         // If expired, try again ignoring expiration
-        console.log('🔐 Token expired, trying without expiration check...');
         decoded = this.jwtService.verifyWithoutExpiration(token);
-        console.log('🔐 decoded expired token:', decoded);
         
         // Check if it's too old (more than 7 days)
         const now = Math.floor(Date.now() / 1000);
@@ -79,8 +76,6 @@ export class AuthMiddleware {
           });
         }
       }
-      
-      console.log('🔐 decoded token:', decoded);
       
       // Reject App Tokens
       if (decoded.type === 'app' || decoded.sub === 'app') {
@@ -100,15 +95,12 @@ export class AuthMiddleware {
         });
       }
       
-      console.log('✅ Token validation successful, calling next()');
       
       // Attach user info
       req.user = decoded;
       
       return next();
     } catch (error) {
-      console.log('❌ JWT verification failed:', error.message);
-      console.log('❌ Full error:', error);
       return res.status(401).json({ 
         error: 'Invalid token',
         message: error.message 
