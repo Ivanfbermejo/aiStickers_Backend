@@ -31,7 +31,7 @@ export class Transaction {
   }
   
   validate() {
-    if (!['PURCHASE', 'SPEND'].includes(this.type)) {
+    if (!['PURCHASE', 'SPEND', 'REFUND'].includes(this.type)) {
       throw new Error('Invalid transaction type');
     }
     if (this.amount <= 0) {
@@ -69,6 +69,19 @@ export class Transaction {
       id: nanoid(),
       userId,
       type: 'SPEND',
+      amount,
+      productId,
+      provider: 'SYSTEM',
+      balanceAfter,
+      metadata
+    });
+  }
+
+  static createRefund({ userId, amount, productId, balanceAfter, metadata }) {
+    return new Transaction({
+      id: nanoid(),
+      userId,
+      type: 'REFUND',
       amount,
       productId,
       provider: 'SYSTEM',

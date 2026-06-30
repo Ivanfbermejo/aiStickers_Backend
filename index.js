@@ -29,6 +29,7 @@ import { ConfigController } from './src/infrastructure/web/controllers/config.co
 import { PlanController } from './src/infrastructure/web/controllers/plan.controller.js';
 import { I18nController } from './src/infrastructure/web/controllers/i18n.controller.js';
 import { AiController } from './src/infrastructure/web/controllers/ai.controller.js';
+import { GenerationController } from './src/infrastructure/web/controllers/generation.controller.js';
 import { StickerController } from './src/infrastructure/web/controllers/sticker.controller.js';
 import { PackageController } from './src/infrastructure/web/controllers/package.controller.js';
 import { StyleController } from './src/infrastructure/web/controllers/style.controller.js';
@@ -112,7 +113,10 @@ container.initialize().then(() => {
   console.log('🚀 aiStickers Backend - Clean Architecture');
   console.log(`📦 Environment: ${env.NODE_ENV}`);
   console.log(`💾 Data Directory: ${env.DATA_DIR}`);
-  
+
+  // Start async generation worker
+  container.services.generationJobWorker.start();
+
   // ========== ROUTES ==========
   
   // Health Check
@@ -177,6 +181,11 @@ container.initialize().then(() => {
   app.post('/api/v1/ai/process-image', requireHmac, requireUser, logRequestFlow, upload.single('image'), handleMulterError, AiController.processImage);
   app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
   app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
+
+  // --- Async Generation (HMAC + User JWT required) ---
+  app.post('/api/v1/generation', requireHmac, requireUser, GenerationController.create);
+  app.get('/api/v1/generation', requireHmac, requireUser, GenerationController.getUserJobs);
+  app.get('/api/v1/generation/:jobId', requireHmac, requireUser, GenerationController.getById);
   
   // --- Stickers CRUD (HMAC + User JWT required) ---
   app.get('/api/v1/stickers', requireHmac, requireUser, StickerController.getUserStickers);
