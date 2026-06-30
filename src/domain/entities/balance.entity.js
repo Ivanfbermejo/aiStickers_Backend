@@ -51,6 +51,22 @@ export class Balance {
   }
   
   /**
+   * Refund StickerDollars after a failed generation
+   * @param {number} amount - Amount to refund
+   * @returns {number} New balance
+   */
+  refund(amount) {
+    if (amount <= 0) {
+      throw new Error('Amount must be positive');
+    }
+
+    this.stickerDollars += amount;
+    this.updatedAt = new Date().toISOString();
+
+    return this.stickerDollars;
+  }
+
+  /**
    * Check if user has enough balance
    * @param {number} amount - Amount needed
    */
