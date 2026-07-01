@@ -32,6 +32,14 @@ export class StickerController {
           name: s.name,
           imageUrl: s.imageUrl,
           thumbnailUrl: s.thumbnailUrl,
+          whatsappWebpUrl: s.whatsappWebpUrl,
+          width: s.width,
+          height: s.height,
+          durationMs: s.durationMs,
+          sizeBytes: s.sizeBytes,
+          mimeType: s.mimeType,
+          exportStatus: s.exportStatus,
+          exportError: s.exportError,
           status: s.status,
           prompt: s.prompt,
           cost: s.cost,
@@ -90,6 +98,14 @@ export class StickerController {
           name: s.name,
           imageUrl: s.imageUrl,
           thumbnailUrl: s.thumbnailUrl,
+          whatsappWebpUrl: s.whatsappWebpUrl,
+          width: s.width,
+          height: s.height,
+          durationMs: s.durationMs,
+          sizeBytes: s.sizeBytes,
+          mimeType: s.mimeType,
+          exportStatus: s.exportStatus,
+          exportError: s.exportError,
           status: s.status,
           createdAt: s.createdAt
         }))
@@ -137,6 +153,14 @@ export class StickerController {
           name: sticker.name,
           imageUrl: sticker.imageUrl,
           thumbnailUrl: sticker.thumbnailUrl,
+          whatsappWebpUrl: sticker.whatsappWebpUrl,
+          width: sticker.width,
+          height: sticker.height,
+          durationMs: sticker.durationMs,
+          sizeBytes: sticker.sizeBytes,
+          mimeType: sticker.mimeType,
+          exportStatus: sticker.exportStatus,
+          exportError: sticker.exportError,
           replicateId: sticker.replicateId,
           status: sticker.status,
           prompt: sticker.prompt,
@@ -221,6 +245,8 @@ export class StickerController {
           name: sticker.name,
           imageUrl: sticker.imageUrl,
           thumbnailUrl: sticker.thumbnailUrl,
+          whatsappWebpUrl: sticker.whatsappWebpUrl,
+          exportStatus: sticker.exportStatus,
           status: sticker.status,
           createdAt: sticker.createdAt
         }
@@ -307,6 +333,9 @@ export class StickerController {
           name: sticker.name,
           imageUrl: sticker.imageUrl,
           thumbnailUrl: sticker.thumbnailUrl,
+          whatsappWebpUrl: sticker.whatsappWebpUrl,
+          exportStatus: sticker.exportStatus,
+          exportError: sticker.exportError,
           updatedAt: sticker.updatedAt
         }
       });

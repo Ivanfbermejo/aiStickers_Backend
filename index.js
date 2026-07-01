@@ -34,6 +34,7 @@ import { StickerController } from './src/infrastructure/web/controllers/sticker.
 import { PackageController } from './src/infrastructure/web/controllers/package.controller.js';
 import { StyleController } from './src/infrastructure/web/controllers/style.controller.js';
 import { TelegramController } from './src/infrastructure/web/controllers/telegram.controller.js';
+import { WhatsAppStickerExportController } from './src/infrastructure/web/controllers/whatsapp-sticker-export.controller.js';
 
 // Initialize
 const app = express();
@@ -210,6 +211,12 @@ container.initialize().then(() => {
   app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, TelegramController.exportPack);
   app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, TelegramController.reconcilePack);
   app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, TelegramController.getPackStatus);
+  
+  // --- WhatsApp Sticker Export (HMAC + User JWT required) ---
+  app.post('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportSticker);
+  app.get('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getStickerExportStatus);
+  app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportPackage);
+  app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getPackageExportStatus);
   
   // --- Error Handling ---
   app.use((err, req, res, next) => {
