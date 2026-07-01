@@ -36,6 +36,11 @@ export class PackageController {
           category: p.category,
           tags: p.tags,
           isPublic: p.isPublic,
+          packType: p.packType,
+          trayIconUrl: p.trayIconUrl,
+          whatsappReady: p.whatsappReady,
+          exportStatus: p.exportStatus,
+          exportError: p.exportError,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt
         }))
@@ -80,6 +85,10 @@ export class PackageController {
           stickerCount: p.stickerCount,
           category: p.category,
           tags: p.tags,
+          packType: p.packType,
+          trayIconUrl: p.trayIconUrl,
+          whatsappReady: p.whatsappReady,
+          exportStatus: p.exportStatus,
           createdAt: p.createdAt
         }))
       });
@@ -141,6 +150,11 @@ export class PackageController {
           category: pkg.category,
           tags: pkg.tags,
           isPublic: pkg.isPublic,
+          packType: pkg.packType,
+          trayIconUrl: pkg.trayIconUrl,
+          whatsappReady: pkg.whatsappReady,
+          exportStatus: pkg.exportStatus,
+          exportError: pkg.exportError,
           createdAt: pkg.createdAt,
           updatedAt: pkg.updatedAt,
           stickers: stickers.map(s => ({
@@ -148,6 +162,9 @@ export class PackageController {
             name: s.name,
             imageUrl: s.imageUrl,
             thumbnailUrl: s.thumbnailUrl,
+            whatsappWebpUrl: s.whatsappWebpUrl,
+            exportStatus: s.exportStatus,
+            exportError: s.exportError,
             status: s.status
           }))
         }
@@ -209,6 +226,9 @@ export class PackageController {
           stickerCount: pkg.stickerCount,
           category: pkg.category,
           isPublic: pkg.isPublic,
+          packType: pkg.packType,
+          whatsappReady: pkg.whatsappReady,
+          exportStatus: pkg.exportStatus,
           createdAt: pkg.createdAt
         }
       });
@@ -230,7 +250,7 @@ export class PackageController {
     try {
       const userId = req.user?.sub;
       const { id } = req.params;
-      const { name, author, icon, description, category, isPublic, tags } = req.body || {};
+      const { name, author, icon, description, category, isPublic, tags, packType } = req.body || {};
       
       if (!userId) {
         return res.status(401).json({
@@ -264,6 +284,9 @@ export class PackageController {
       if (category !== undefined) {
         pkg.setCategory(category);
       }
+      if (packType !== undefined) {
+        pkg.setPackType(packType);
+      }
       if (isPublic !== undefined) {
         if (isPublic) {
           pkg.isPublic = true;
@@ -287,6 +310,11 @@ export class PackageController {
           stickerCount: pkg.stickerCount,
           category: pkg.category,
           isPublic: pkg.isPublic,
+          packType: pkg.packType,
+          trayIconUrl: pkg.trayIconUrl,
+          whatsappReady: pkg.whatsappReady,
+          exportStatus: pkg.exportStatus,
+          exportError: pkg.exportError,
           updatedAt: pkg.updatedAt
         }
       });

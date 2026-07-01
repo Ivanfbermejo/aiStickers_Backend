@@ -14,6 +14,12 @@ export class Package {
     stickerCount = 0,
     category,
     tags = [],
+    platform,
+    packType = 'static', // static | animated
+    trayIconUrl,
+    exportStatus = 'pending', // pending, processing, ready, failed
+    whatsappReady = false,
+    exportError,
     createdAt, 
     updatedAt 
   }) {
@@ -27,6 +33,12 @@ export class Package {
     this.stickerCount = stickerCount;
     this.category = category;
     this.tags = tags;
+    this.platform = platform;
+    this.packType = packType;
+    this.trayIconUrl = trayIconUrl;
+    this.exportStatus = exportStatus;
+    this.whatsappReady = whatsappReady;
+    this.exportError = exportError;
     this.createdAt = createdAt || new Date().toISOString();
     this.updatedAt = updatedAt || new Date().toISOString();
     
@@ -108,6 +120,35 @@ export class Package {
   
   setCategory(category) {
     this.category = category;
+    this.updatedAt = new Date().toISOString();
+  }
+  
+  setPackType(packType) {
+    if (packType !== 'static' && packType !== 'animated') {
+      throw new Error('packType must be static or animated');
+    }
+    this.packType = packType;
+    this.updatedAt = new Date().toISOString();
+  }
+  
+  markExportProcessing() {
+    this.exportStatus = 'processing';
+    this.exportError = null;
+    this.updatedAt = new Date().toISOString();
+  }
+  
+  markExportReady({ trayIconUrl, whatsappReady }) {
+    this.trayIconUrl = trayIconUrl;
+    this.whatsappReady = whatsappReady;
+    this.exportStatus = whatsappReady ? 'ready' : 'failed';
+    this.exportError = null;
+    this.updatedAt = new Date().toISOString();
+  }
+  
+  markExportFailed(errorMessage) {
+    this.exportStatus = 'failed';
+    this.whatsappReady = false;
+    this.exportError = errorMessage;
     this.updatedAt = new Date().toISOString();
   }
   

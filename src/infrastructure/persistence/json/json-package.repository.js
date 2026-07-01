@@ -85,6 +85,12 @@ export class JsonPackageRepository extends IPackageRepository {
       stickerCount: pkg.stickerCount,
       category: pkg.category,
       tags: pkg.tags,
+      platform: pkg.platform,
+      packType: pkg.packType,
+      trayIconUrl: pkg.trayIconUrl,
+      exportStatus: pkg.exportStatus,
+      whatsappReady: pkg.whatsappReady,
+      exportError: pkg.exportError,
       createdAt: pkg.createdAt,
       updatedAt: pkg.updatedAt
     });
