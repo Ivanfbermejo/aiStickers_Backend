@@ -9,6 +9,25 @@ export class JwtService {
   constructor() {
     this.secret = env.JWT_SECRET;
     this.expiresIn = env.JWT_EXPIRES_IN || '24h';
+    this.testJwts = env.TEST_JWTS || [];
+  }
+
+  /**
+   * Check if the provided token is a configured test JWT.
+   * @param {string} token - JWT token
+   * @returns {boolean}
+   */
+  isTestJwt(token) {
+    return this.testJwts.includes(token);
+  }
+
+  /**
+   * Decode a test JWT without signature verification.
+   * @param {string} token - JWT token
+   * @returns {Object|null} Decoded payload
+   */
+  decodeTestJwt(token) {
+    return jwt.decode(token);
   }
   
   /**
