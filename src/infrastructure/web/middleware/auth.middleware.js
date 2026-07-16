@@ -24,7 +24,21 @@ export class AuthMiddleware {
       }
       
       const token = authHeader.substring(7);
-      const decoded = this.jwtService.verify(token);
+      let decoded;
+
+      try {
+        decoded = this.jwtService.verify(token);
+      } catch (error) {
+        // If real verification fails, allow configured test JWTs
+        if (this.jwtService.isTestJwt(token)) {
+          decoded = this.jwtService.decodeTestJwt(token);
+          if (!decoded) {
+            throw new Error('Invalid test token');
+          }
+        } else {
+          throw error;
+        }
+      }
       
       // Attach user info to request
       req.user = decoded;
@@ -63,17 +77,29 @@ export class AuthMiddleware {
       try {
         decoded = this.jwtService.verify(token);
       } catch (expError) {
-        // If expired, try again ignoring expiration
-        decoded = this.jwtService.verifyWithoutExpiration(token);
-        
-        // Check if it's too old (more than 7 days)
-        const now = Math.floor(Date.now() / 1000);
-        if (decoded.exp && (now - decoded.exp) > 604800) {
-          console.log('❌ Token too old (>7d)');
-          return res.status(401).json({ 
-            error: 'Token expired',
-            message: 'Please login again' 
-          });
+        try {
+          // If expired, try again ignoring expiration
+          decoded = this.jwtService.verifyWithoutExpiration(token);
+          
+          // Check if it's too old (more than 7 days)
+          const now = Math.floor(Date.now() / 1000);
+          if (decoded.exp && (now - decoded.exp) > 604800) {
+            console.log('❌ Token too old (>7d)');
+            return res.status(401).json({ 
+              error: 'Token expired',
+              message: 'Please login again' 
+            });
+          }
+        } catch (verifyError) {
+          // Allow configured test JWTs without signature verification
+          if (this.jwtService.isTestJwt(token)) {
+            decoded = this.jwtService.decodeTestJwt(token);
+            if (!decoded) {
+              throw new Error('Invalid test token');
+            }
+          } else {
+            throw verifyError;
+          }
         }
       }
       

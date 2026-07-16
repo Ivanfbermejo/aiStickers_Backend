@@ -9,6 +9,26 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 /**
+ * Parse TEST_JWTS environment variable into an array of test JWT strings.
+ * Accepts a JSON array string. Returns an empty array if the variable is
+ * unset, empty, invalid JSON, or not an array of strings.
+ */
+export function parseTestJwts(value) {
+  if (!value || value.trim() === '') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(item => typeof item === 'string' && item.trim() !== '');
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Environment Configuration
  * Centralizes all environment variables
  */
@@ -20,6 +40,7 @@ export const env = {
   // JWT
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
+  TEST_JWTS: parseTestJwts(process.env.TEST_JWTS),
   
   // Google Auth
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
