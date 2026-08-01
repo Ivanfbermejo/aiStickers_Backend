@@ -8,6 +8,14 @@
 **/public/uploads/*
 ._*
 
+# Test data
+tmp-data/
+tmp-test-data/
+
+# Coverage / build outputs
+coverage/
+dist/
+
 # Secrets (service accounts, private keys)
 secrets/
 

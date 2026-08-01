@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync('index.js', 'utf8');
+const source = readFileSync('src/server.js', 'utf8');
 
 // Each route definition is expected to be a single line.
 const ROUTE_RE = /\bapp\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]\s*,(.*)\)\s*;?$/gm;

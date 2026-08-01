@@ -1,0 +1,19 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    env: {
+      NODE_ENV: 'test',
+      PORT: '22024',
+      JWT_SECRET: 'test_jwt_secret_minimum_32_chars_long',
+      JWT_EXPIRES_IN: '1h',
+      CLIENT_ID: 'ai-stickers-test',
+      CLIENT_SECRET: 'test_client_secret_minimum_32_chars',
+      TELEGRAM_BOT_TOKEN: 'test-token',
+      GOOGLE_PACKAGE_NAME: 'com.animatedsticker.aistickers',
+      REPLICATE_MODEL: 'google/nano-banana',
+      REPLICATE_IMG2VID_MODEL: 'bytedance/seedance-1-pro'
+    }
+  }
+});

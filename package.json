@@ -7,7 +7,16 @@
         "node": ">=16"
     },
     "scripts": {
-        "start": "node index.js"
+        "start": "node index.js",
+        "test": "vitest run",
+        "test:unit": "vitest run tests/unit",
+        "test:integration": "vitest run tests/integration",
+        "test:coverage": "vitest run --coverage"
+    },
+    "devDependencies": {
+        "@vitest/coverage-v8": "^0.34.6",
+        "supertest": "^6.3.4",
+        "vitest": "^0.34.6"
     },
     "dependencies": {
         "cors": "^2.8.5",
