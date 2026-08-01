@@ -3,6 +3,8 @@
 **/.env
 **/.env.*
 !.env.example
+!.env.docker.example
+.env.docker
 **/public/uploads/*
 ._*
 

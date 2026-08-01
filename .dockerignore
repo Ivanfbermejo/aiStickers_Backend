@@ -1,0 +1,14 @@
+.git
+.github
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.docker.example
+node_modules
+npm-debug.log*
+tmp-data
+coverage
+outputs
+work
+docs/*.pdf
