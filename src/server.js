@@ -35,16 +35,30 @@ import { WhatsAppStickerExportController } from './infrastructure/web/controller
  * can mount Supertest and inspect dependencies.
  */
 export async function createApp() {
-  validateEnv();
+  validateEnv(env);
 
   const app = express();
 
-  // CORS - Allow all origins and required headers
-  app.use(cors({
-    origin: '*',
+  // CORS - wildcard only in development; explicit origins in production
+  const corsOrigins = env.CORS_ORIGINS;
+  const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id', 'X-Timestamp', 'X-User-JWT', 'X-App-Id', 'X-App-Timestamp', 'X-App-Nonce', 'X-App-Signature']
-  }));
+  };
+
+  if (corsOrigins === '*') {
+    corsOptions.origin = '*';
+  } else {
+    corsOptions.origin = function (origin, callback) {
+      if (!origin || corsOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    };
+  }
+
+  app.use(cors(corsOptions));
 
   // Security headers
   app.use(helmet());
@@ -113,9 +127,25 @@ export async function createApp() {
 
   // ========== ROUTES ==========
 
-  // Health Check
+  // Health Checks
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  app.get('/health/live', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  app.get('/health/ready', async (req, res) => {
+    try {
+      const probeFile = path.join(env.DATA_DIR, 'uploads', '.ready-probe');
+      await fs.promises.writeFile(probeFile, new Date().toISOString());
+      await fs.promises.rm(probeFile, { force: true });
+      res.json({ status: 'ready', timestamp: new Date().toISOString() });
+    } catch (error) {
+      console.error('Readiness probe failed:', error);
+      res.status(503).json({ status: 'not ready', error: error.message });
+    }
   });
 
   // --- Authentication ---
@@ -141,7 +171,9 @@ export async function createApp() {
 
   // --- Payments (HMAC + User JWT required) ---
   app.post('/api/v1/payments/validate/google-play', requireHmac, requireUser, PaymentController.validateGooglePlayPurchase);
-  app.post('/api/v1/payments/validate/apple-app-store', requireHmac, requireUser, PaymentController.validateApplePurchase);
+  if (env.ENABLE_APPLE_PAYMENTS) {
+    app.post('/api/v1/payments/validate/apple-app-store', requireHmac, requireUser, PaymentController.validateApplePurchase);
+  }
 
   // --- Balance (HMAC + User JWT required) ---
   app.get('/api/v1/users/balance', requireHmac, requireUser, BalanceController.getBalance);
@@ -201,15 +233,19 @@ export async function createApp() {
   app.get('/api/v1/styles', requireHmac, StyleController.getStyles);
 
   // --- Telegram Sticker Packs (HMAC + User JWT required) ---
-  app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, TelegramController.exportPack);
-  app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, TelegramController.reconcilePack);
-  app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, TelegramController.getPackStatus);
+  if (env.ENABLE_TELEGRAM) {
+    app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, TelegramController.exportPack);
+    app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, TelegramController.reconcilePack);
+    app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, TelegramController.getPackStatus);
+  }
 
   // --- WhatsApp Sticker Export (HMAC + User JWT required) ---
-  app.post('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportSticker);
-  app.get('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getStickerExportStatus);
-  app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportPackage);
-  app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getPackageExportStatus);
+  if (env.ENABLE_WHATSAPP_EXPORT) {
+    app.post('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportSticker);
+    app.get('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getStickerExportStatus);
+    app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportPackage);
+    app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getPackageExportStatus);
+  }
 
   // --- Error Handling ---
   app.use((err, req, res, next) => {

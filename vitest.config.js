@@ -14,7 +14,15 @@ export default defineConfig({
       TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? 'test-token',
       GOOGLE_PACKAGE_NAME: 'com.animatedsticker.aistickers',
       REPLICATE_MODEL: 'google/nano-banana',
-      REPLICATE_IMG2VID_MODEL: 'bytedance/seedance-1-pro'
+      REPLICATE_IMG2VID_MODEL: 'bytedance/seedance-1-pro',
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? '',
+      ENABLE_APPLE_PAYMENTS: 'false',
+      ENABLE_TELEGRAM: 'false',
+      ENABLE_WHATSAPP_EXPORT: 'false',
+      ENABLE_EXTERNAL_IMAGE_URLS: 'false',
+      ENABLE_TEST_JWTS: 'false',
+      CORS_ORIGINS: '*'
     }
   }
 });

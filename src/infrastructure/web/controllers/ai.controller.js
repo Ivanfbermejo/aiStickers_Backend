@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
 
 /**
@@ -26,6 +27,14 @@ export class AiController {
         return res.status(400).json({
           error: 'No image provided',
           message: 'Upload an image file or provide imageUrl'
+        });
+      }
+
+      if (!req.file && req.body?.imageUrl && !env.ENABLE_EXTERNAL_IMAGE_URLS) {
+        console.log('[AI Controller] ❌ External image URLs are disabled');
+        return res.status(400).json({
+          error: 'External image URLs disabled',
+          message: 'External image URLs are not enabled'
         });
       }
 
@@ -84,6 +93,13 @@ export class AiController {
       if (!imageUrl) {
         return res.status(400).json({
           error: 'imageUrl is required'
+        });
+      }
+
+      if (!env.ENABLE_EXTERNAL_IMAGE_URLS) {
+        return res.status(400).json({
+          error: 'External image URLs disabled',
+          message: 'External image URLs are not enabled'
         });
       }
 
