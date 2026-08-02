@@ -22,7 +22,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { nanoid } from 'nanoid';
+import { randomId } from '../../utils/random-id.util.js';
 import fetch from 'node-fetch';
 import sharp from 'sharp';
 import { env } from '../../config/env.js';
@@ -198,7 +198,7 @@ export async function exportSticker(sourceUrl) {
   const sourceType = await detectSourceType(sourceBuffer);
   const sticker = await convertSticker(sourceBuffer, sourceType);
 
-  const fileName = `whatsapp_sticker_${nanoid(12)}.webp`;
+  const fileName = `whatsapp_sticker_${randomId(12)}.webp`;
   await saveBuffer(sticker.buffer, fileName);
 
   return {
@@ -257,7 +257,7 @@ export async function exportPack({ stickers, sourceUrl }) {
 
   const traySourceBuffer = await downloadBuffer(traySourceUrl);
   const trayIcon = await convertTrayIcon(traySourceBuffer);
-  const trayFileName = `whatsapp_tray_${nanoid(12)}.webp`;
+  const trayFileName = `whatsapp_tray_${randomId(12)}.webp`;
   await saveBuffer(trayIcon.buffer, trayFileName);
 
   const whatsappReady = !hasFailure && stickerResults.length >= MIN_PACK_STICKERS;

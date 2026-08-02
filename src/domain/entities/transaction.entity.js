@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomId } from '../../utils/random-id.util.js';
 
 /**
  * Transaction Entity - Purchase or spending record
@@ -52,7 +52,7 @@ export class Transaction {
   
   static createPurchase({ userId, amount, productId, provider, providerTransactionId, balanceAfter, metadata }) {
     return new Transaction({
-      id: nanoid(),
+      id: randomId(),
       userId,
       type: 'PURCHASE',
       amount,
@@ -66,7 +66,7 @@ export class Transaction {
   
   static createSpend({ userId, amount, productId, balanceAfter, metadata }) {
     return new Transaction({
-      id: nanoid(),
+      id: randomId(),
       userId,
       type: 'SPEND',
       amount,
@@ -79,7 +79,7 @@ export class Transaction {
 
   static createRefund({ userId, amount, productId, balanceAfter, metadata }) {
     return new Transaction({
-      id: nanoid(),
+      id: randomId(),
       userId,
       type: 'REFUND',
       amount,

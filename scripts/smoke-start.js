@@ -14,7 +14,7 @@ const child = spawn('node', ['index.js'], {
     ...process.env,
     PORT,
     DATA_DIR,
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || 'smoke-test-token',
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? 'smoke-test-token',
     NODE_ENV: 'test'
   }
 });

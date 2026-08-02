@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import bodyParser from 'body-parser';
 import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
@@ -98,7 +97,7 @@ export async function createApp() {
     }
     // For JSON and other requests, use standard body parser
     console.log('[BodyParser] Using JSON parser');
-    bodyParser.json({
+    express.json({
       limit: '5mb',
       verify: (req, res, buf) => {
         req.rawBody = buf;

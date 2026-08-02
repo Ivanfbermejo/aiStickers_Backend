@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -38,3 +38,15 @@ jobs:
 
       - name: Start server and verify health
         run: node scripts/smoke-start.js
+
+      - name: Run security scan
+        run: node scripts/security-scan.js
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --json > npm-audit.json
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit.json

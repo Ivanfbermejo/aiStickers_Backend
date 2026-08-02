@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomId } from '../../utils/random-id.util.js';
 
 /**
  * Purchase Entity - Validated purchase from store
@@ -54,7 +54,7 @@ export class Purchase {
   
   static create({ userId, productId, purchaseToken, provider, stickerAmount }) {
     return new Purchase({
-      id: nanoid(),
+      id: randomId(),
       userId,
       productId,
       purchaseToken,
