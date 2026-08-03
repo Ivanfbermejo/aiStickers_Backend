@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
+import sharp from 'sharp';
 import { buildTestApp } from '../helpers/app.js';
 import { signRequest } from '../helpers/hmac.js';
 import { makeUserAccessToken } from '../helpers/token.js';
 import { Balance } from '../../src/domain/entities/balance.entity.js';
+
+async function makePngDataUri() {
+  const buffer = await sharp({
+    create: { width: 10, height: 10, channels: 3, background: 'blue' }
+  })
+    .png()
+    .toBuffer();
+  return `data:image/png;base64,${buffer.toString('base64')}`;
+}
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -33,7 +43,7 @@ describe('Generation smoke', () => {
   it('creates a generation job and retrieves it', async () => {
     const body = {
       type: 'image_sticker',
-      imageUrl: 'https://example.com/input.png',
+      imageUrl: await makePngDataUri(),
       prompt: 'test prompt'
     };
     const createHeaders = signRequest({

@@ -1,5 +1,15 @@
 import { container } from '../../../config/container.js';
 import { Sticker } from '../../../domain/entities/sticker.entity.js';
+import { env } from '../../../config/env.js';
+import {
+  isInternalUrl,
+  validateClientImageReference
+} from '../../../application/services/secure-asset.service.js';
+
+function isAllowedExternalImageUrl(urlString) {
+  if (isInternalUrl(urlString)) return true;
+  return env.ENABLE_EXTERNAL_IMAGE_URLS;
+}
 
 /**
  * Sticker Controller
@@ -199,6 +209,22 @@ export class StickerController {
         return res.status(400).json({
           error: 'Bad request',
           message: 'imageUrl is required'
+        });
+      }
+
+      if (!isAllowedExternalImageUrl(imageUrl)) {
+        return res.status(400).json({
+          error: 'External image URLs disabled',
+          message: 'External image URLs are not enabled'
+        });
+      }
+
+      try {
+        await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+      } catch (err) {
+        return res.status(400).json({
+          error: 'Invalid image URL',
+          message: err.message
         });
       }
 

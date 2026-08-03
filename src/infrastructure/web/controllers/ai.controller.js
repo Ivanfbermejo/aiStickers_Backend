@@ -1,6 +1,16 @@
 import fetch from 'node-fetch';
 import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
+import {
+  isInternalUrl,
+  validateImageBuffer,
+  validateClientImageReference
+} from '../../../application/services/secure-asset.service.js';
+
+function isAllowedExternalImageUrl(urlString) {
+  if (isInternalUrl(urlString)) return true;
+  return env.ENABLE_EXTERNAL_IMAGE_URLS;
+}
 
 /**
  * AI Controller
@@ -15,26 +25,12 @@ export class AiController {
    */
   static async processImage(req, res) {
     try {
-      console.log('[AI Controller] processImage called (async wrapper)');
-      console.log('[AI Controller] req.file:', req.file ? { name: req.file.originalname, size: req.file.size, mimetype: req.file.mimetype } : 'undefined');
-      console.log('[AI Controller] req.body:', req.body);
-      console.log('[AI Controller] Content-Type:', req.headers['content-type']);
-
       const { prompt, packageId } = req.body || {};
 
       if (!req.file && !req.body?.imageUrl) {
-        console.log('[AI Controller] ❌ No file and no imageUrl');
         return res.status(400).json({
           error: 'No image provided',
           message: 'Upload an image file or provide imageUrl'
-        });
-      }
-
-      if (!req.file && req.body?.imageUrl && !env.ENABLE_EXTERNAL_IMAGE_URLS) {
-        console.log('[AI Controller] ❌ External image URLs are disabled');
-        return res.status(400).json({
-          error: 'External image URLs disabled',
-          message: 'External image URLs are not enabled'
         });
       }
 
@@ -47,10 +43,34 @@ export class AiController {
       }
 
       let imageUrl = req.body?.imageUrl;
+
+      if (imageUrl && !isAllowedExternalImageUrl(imageUrl)) {
+        return res.status(400).json({
+          error: 'External image URLs disabled',
+          message: 'External image URLs are not enabled'
+        });
+      }
+
       if (req.file) {
+        try {
+          await validateImageBuffer(req.file.buffer);
+        } catch (err) {
+          return res.status(400).json({
+            error: 'Invalid uploaded image',
+            message: err.message
+          });
+        }
         const b64 = req.file.buffer.toString('base64');
         imageUrl = `data:${req.file.mimetype};base64,${b64}`;
-        console.log('[AI Controller] 🖼️ Image converted to base64 data URI, size:', req.file.size);
+      } else {
+        try {
+          await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+        } catch (err) {
+          return res.status(400).json({
+            error: 'Invalid image URL',
+            message: err.message
+          });
+        }
       }
 
       const finalPrompt = (prompt?.trim()) || 'clean sticker with white border, high contrast, professional quality, preserving exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Keep the face perfectly recognizable and faithful to the original person.';
@@ -96,10 +116,19 @@ export class AiController {
         });
       }
 
-      if (!env.ENABLE_EXTERNAL_IMAGE_URLS) {
+      if (!isAllowedExternalImageUrl(imageUrl)) {
         return res.status(400).json({
           error: 'External image URLs disabled',
           message: 'External image URLs are not enabled'
+        });
+      }
+
+      try {
+        await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+      } catch (err) {
+        return res.status(400).json({
+          error: 'Invalid image URL',
+          message: err.message
         });
       }
 

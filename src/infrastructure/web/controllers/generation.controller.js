@@ -1,4 +1,14 @@
 import { container } from '../../../config/container.js';
+import { env } from '../../../config/env.js';
+import {
+  isInternalUrl,
+  validateClientImageReference
+} from '../../../application/services/secure-asset.service.js';
+
+function isAllowedExternalImageUrl(urlString) {
+  if (isInternalUrl(urlString)) return true;
+  return env.ENABLE_EXTERNAL_IMAGE_URLS;
+}
 
 /**
  * Generation Controller
@@ -26,6 +36,24 @@ export class GenerationController {
           error: 'Bad request',
           message: 'type is required'
         });
+      }
+
+      if (imageUrl && !isAllowedExternalImageUrl(imageUrl)) {
+        return res.status(400).json({
+          error: 'External image URLs disabled',
+          message: 'External image URLs are not enabled'
+        });
+      }
+
+      if (imageUrl) {
+        try {
+          await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+        } catch (err) {
+          return res.status(400).json({
+            error: 'Invalid image URL',
+            message: err.message
+          });
+        }
       }
 
       const result = await container.useCases.createGenerationJob.execute({

@@ -89,6 +89,17 @@ function parseJson(value, name) {
   }
 }
 
+function parseHostAllowlist(value) {
+  if (!value || value.trim() === '') {
+    return [];
+  }
+  const parsed = parseJson(value, 'EXTERNAL_IMAGE_URL_ALLOWLIST');
+  if (!Array.isArray(parsed)) {
+    throw new Error('EXTERNAL_IMAGE_URL_ALLOWLIST must be a JSON array');
+  }
+  return parsed.filter(item => typeof item === 'string' && item.trim() !== '');
+}
+
 /**
  * Build a typed configuration object from process.env.
  * Throws on invalid values so the process fails fast.
@@ -136,6 +147,8 @@ export function loadConfig(rawEnv = process.env) {
     ENABLE_WHATSAPP_EXPORT: parseBooleanFlag(rawEnv.ENABLE_WHATSAPP_EXPORT, false),
     ENABLE_EXTERNAL_IMAGE_URLS: parseBooleanFlag(rawEnv.ENABLE_EXTERNAL_IMAGE_URLS, false),
     ENABLE_TEST_JWTS: parseBooleanFlag(rawEnv.ENABLE_TEST_JWTS, false),
+
+    EXTERNAL_IMAGE_URL_ALLOWLIST: parseHostAllowlist(rawEnv.EXTERNAL_IMAGE_URL_ALLOWLIST),
 
     CORS_ORIGINS: null,
     TEST_JWTS: []

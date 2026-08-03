@@ -23,9 +23,15 @@
 import fs from 'fs';
 import path from 'path';
 import { randomId } from '../../utils/random-id.util.js';
-import fetch from 'node-fetch';
 import sharp from 'sharp';
 import { env } from '../../config/env.js';
+import {
+  parseDataUri,
+  validateImageBuffer,
+  downloadSecureUrl,
+  getTrustedProviderHosts,
+  MAX_DOWNLOAD_BYTES
+} from './secure-asset.service.js';
 
 const STICKER_SIZE = 512;
 const TRAY_ICON_SIZE = 96;
@@ -47,18 +53,36 @@ function publicUrlFor(relativePath) {
   return `/uploads/${relativePath}`;
 }
 
+async function readLocalUpload(relativePath) {
+  const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
+  const filePath = path.join(UPLOADS_DIR, safePath);
+  const resolved = await fs.promises.realpath(filePath).catch(() => filePath);
+  const uploadsResolved = path.resolve(UPLOADS_DIR);
+  if (!resolved.startsWith(uploadsResolved + path.sep)) {
+    throw new Error('Invalid upload path');
+  }
+  return fs.promises.readFile(filePath);
+}
+
 async function downloadBuffer(url) {
   if (url.startsWith('data:')) {
-    const base64 = url.split(',')[1];
-    return Buffer.from(base64, 'base64');
+    const { buffer } = parseDataUri(url, MAX_DOWNLOAD_BYTES);
+    await validateImageBuffer(buffer);
+    return buffer;
   }
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to download asset: ${url} (${res.status})`);
+  if (url.startsWith('/uploads/')) {
+    const buffer = await readLocalUpload(url.replace('/uploads/', ''));
+    await validateImageBuffer(buffer);
+    return buffer;
   }
-  const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+
+  const buffer = await downloadSecureUrl(url, {
+    maxBytes: MAX_DOWNLOAD_BYTES,
+    allowlist: getTrustedProviderHosts()
+  });
+  await validateImageBuffer(buffer);
+  return buffer;
 }
 
 async function detectSourceType(buffer) {
