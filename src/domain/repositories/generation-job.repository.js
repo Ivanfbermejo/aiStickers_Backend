@@ -34,4 +34,12 @@ export class IGenerationJobRepository {
   async deleteByUserId(userId) {
     throw new Error('Method not implemented');
   }
+
+  /**
+   * Atomically claim the next available pending job, marking it as processing.
+   * Returns the claimed job or null if none are available.
+   */
+  async claimNextPendingJob() {
+    throw new Error('Method not implemented');
+  }
 }

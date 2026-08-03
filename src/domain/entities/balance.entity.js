@@ -3,11 +3,12 @@
  * Handles balance operations with business rules
  */
 export class Balance {
-  constructor({ userId, stickerDollars = 0, totalPurchased = 0, totalSpent = 0, createdAt, updatedAt }) {
+  constructor({ userId, stickerDollars = 0, totalPurchased = 0, totalSpent = 0, version = 0, createdAt, updatedAt }) {
     this.userId = userId;
     this.stickerDollars = stickerDollars;
     this.totalPurchased = totalPurchased;
     this.totalSpent = totalSpent;
+    this.version = version ?? 0;
     this.createdAt = createdAt || new Date().toISOString();
     this.updatedAt = updatedAt || new Date().toISOString();
   }
@@ -80,6 +81,7 @@ export class Balance {
       stickerDollars: this.stickerDollars,
       totalPurchased: this.totalPurchased,
       totalSpent: this.totalSpent,
+      version: this.version,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt
     };

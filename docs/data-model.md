@@ -133,7 +133,23 @@ against an empty database applies both migrations in order.
   from `stopServer()` during graceful shutdown alongside the existing
   background worker teardown.
 
-No repository currently calls into this client — see T05B for the cutover.
+The PostgreSQL-backed repositories call this client when
+`PERSISTENCE_DRIVER=postgres`; JSON repositories do not instantiate it.
+
+## PostgreSQL rollback procedure (T05B)
+
+If a cutover needs to be reverted:
+
+1. Keep the PostgreSQL database intact; do not drop or truncate it.
+2. Set `PERSISTENCE_DRIVER=json` to switch the application back to the JSON
+   files, which remain untouched after the import.
+3. Restore the original `DATA_DIR` backup if any writes were made to JSON during
+   the cutover.
+4. After root-cause analysis, re-run the importer to re-sync PostgreSQL and
+   switch `PERSISTENCE_DRIVER` back to `postgres`.
+
+This approach keeps the new PostgreSQL data available for forensic comparison
+without deleting it.
 
 ## Local development
 

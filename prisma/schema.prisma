@@ -151,6 +151,7 @@ model Purchase {
   orderId           String?
   status            PurchaseStatus   @default(PENDING)
   stickerAmount     Int
+  metadata          Json             @default("{}")
   createdAt         DateTime         @default(now())
   verifiedAt        DateTime?
 
@@ -237,6 +238,7 @@ model Sticker {
   mimeType        String?
   exportStatus    ExportStatus  @default(PENDING)
   exportError     String?
+  errorMessage    String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

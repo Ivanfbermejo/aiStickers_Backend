@@ -1,0 +1,145 @@
+import { Sticker } from '../../../domain/entities/sticker.entity.js';
+import { IStickerRepository } from '../../../domain/repositories/sticker.repository.js';
+import { getPrismaClient } from '../prisma/client.js';
+
+function toStickerStatus(status) {
+  return status ? status.toUpperCase() : 'PENDING';
+}
+
+function fromStickerStatus(status) {
+  return status.toLowerCase();
+}
+
+function toExportStatus(status) {
+  return status ? status.toUpperCase() : 'PENDING';
+}
+
+function fromExportStatus(status) {
+  return status.toLowerCase();
+}
+
+function toSticker(raw) {
+  if (!raw) return null;
+  return new Sticker({
+    id: raw.id,
+    userId: raw.userId,
+    packageId: raw.packageId ?? null,
+    name: raw.name ?? null,
+    imageUrl: raw.imageUrl ?? null,
+    thumbnailUrl: raw.thumbnailUrl ?? null,
+    webpUrl: raw.webpUrl ?? null,
+    animatedWebpUrl: raw.animatedWebpUrl ?? null,
+    whatsappWebpUrl: raw.whatsappWebpUrl ?? null,
+    replicateId: raw.replicateId ?? null,
+    status: fromStickerStatus(raw.status),
+    prompt: raw.prompt ?? null,
+    cost: raw.cost,
+    width: raw.width ?? null,
+    height: raw.height ?? null,
+    durationMs: raw.durationMs ?? null,
+    sizeBytes: raw.sizeBytes ?? null,
+    mimeType: raw.mimeType ?? null,
+    exportStatus: fromExportStatus(raw.exportStatus),
+    exportError: raw.exportError ?? null,
+    errorMessage: raw.errorMessage ?? null,
+    createdAt: raw.createdAt.toISOString(),
+    updatedAt: raw.updatedAt.toISOString()
+  });
+}
+
+function toStickerData(sticker) {
+  return {
+    id: sticker.id,
+    userId: sticker.userId,
+    packageId: sticker.packageId || null,
+    name: sticker.name ?? null,
+    imageUrl: sticker.imageUrl ?? null,
+    thumbnailUrl: sticker.thumbnailUrl ?? null,
+    webpUrl: sticker.webpUrl ?? null,
+    animatedWebpUrl: sticker.animatedWebpUrl ?? null,
+    whatsappWebpUrl: sticker.whatsappWebpUrl ?? null,
+    replicateId: sticker.replicateId ?? null,
+    status: toStickerStatus(sticker.status),
+    prompt: sticker.prompt ?? null,
+    cost: sticker.cost,
+    width: sticker.width ?? null,
+    height: sticker.height ?? null,
+    durationMs: sticker.durationMs ?? null,
+    sizeBytes: sticker.sizeBytes ?? null,
+    mimeType: sticker.mimeType ?? null,
+    exportStatus: toExportStatus(sticker.exportStatus),
+    exportError: sticker.exportError ?? null,
+    errorMessage: sticker.errorMessage ?? null,
+    createdAt: new Date(sticker.createdAt),
+    updatedAt: new Date(sticker.updatedAt)
+  };
+}
+
+export class PostgresStickerRepository extends IStickerRepository {
+  async findById(id) {
+    const raw = await getPrismaClient().sticker.findUnique({ where: { id } });
+    return toSticker(raw);
+  }
+
+  async findByUserId(userId) {
+    const rows = await getPrismaClient().sticker.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    });
+    return rows.map(toSticker);
+  }
+
+  async findByPackageId(packageId) {
+    const rows = await getPrismaClient().sticker.findMany({
+      where: { packageId },
+      orderBy: { createdAt: 'desc' }
+    });
+    return rows.map(toSticker);
+  }
+
+  async findByReplicateId(replicateId) {
+    const raw = await getPrismaClient().sticker.findFirst({ where: { replicateId } });
+    return toSticker(raw);
+  }
+
+  async findByUserIdAndStatus(userId, status) {
+    const rows = await getPrismaClient().sticker.findMany({
+      where: { userId, status: toStickerStatus(status) },
+      orderBy: { createdAt: 'desc' }
+    });
+    return rows.map(toSticker);
+  }
+
+  async save(sticker) {
+    const prisma = getPrismaClient();
+    const data = toStickerData(sticker);
+    await prisma.sticker.upsert({
+      where: { id: sticker.id },
+      update: { ...data, id: undefined },
+      create: data
+    });
+    return sticker;
+  }
+
+  async update(sticker) {
+    return this.save(sticker);
+  }
+
+  async delete(id) {
+    await getPrismaClient().sticker.delete({ where: { id } });
+    return true;
+  }
+
+  async deleteByUserId(userId) {
+    const result = await getPrismaClient().sticker.deleteMany({ where: { userId } });
+    return result.count;
+  }
+
+  async countByUserId(userId) {
+    return getPrismaClient().sticker.count({ where: { userId } });
+  }
+
+  async countByPackageId(packageId) {
+    return getPrismaClient().sticker.count({ where: { packageId } });
+  }
+}

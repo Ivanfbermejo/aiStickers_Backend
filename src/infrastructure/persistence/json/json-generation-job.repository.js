@@ -110,4 +110,15 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     await this.saveToFile();
     return toDelete.length;
   }
+
+  async claimNextPendingJob() {
+    const data = Array.from(this.cache.values())
+      .filter(j => j.status === 'queued')
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+    if (!data) return null;
+    const job = new GenerationJob(data);
+    job.markProcessing();
+    await this.save(job);
+    return job;
+  }
 }
