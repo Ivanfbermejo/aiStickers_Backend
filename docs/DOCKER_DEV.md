@@ -153,6 +153,23 @@ sudo systemctl reload apache2
 5. Confirmar que el proceso `npm start` original sigue respondiendo en su
    puerto (Node 16, sin cambios).
 
+## 11. PostgreSQL (T05A)
+
+`compose.dev.yml` incluye un servicio `db` (PostgreSQL 16) para probar el
+esquema y las migraciones de Prisma. **No publica ningún puerto al host**
+(sin `ports:`), solo es alcanzable desde otros contenedores de la misma red
+de compose. `PERSISTENCE_DRIVER` sigue en `json` por defecto — este servicio
+no sustituye todavía a los repositorios JSON (eso llega en T05B).
+
+```bash
+# Aplicar migraciones dentro de la red de compose
+docker compose -f compose.dev.yml run --rm \
+  -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" \
+  backend npx prisma migrate deploy
+```
+
+Ver `docs/data-model.md` para el esquema completo y las restricciones.
+
 ## Límites de recursos
 
 Por defecto: 1 CPU, 1 GB RAM (ver `compose.dev.yml`). Si `sharp` falla por

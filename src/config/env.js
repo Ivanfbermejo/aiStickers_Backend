@@ -100,6 +100,24 @@ function parseHostAllowlist(value) {
   return parsed.filter(item => typeof item === 'string' && item.trim() !== '');
 }
 
+const PERSISTENCE_DRIVERS = ['json', 'postgres'];
+
+/**
+ * PERSISTENCE_DRIVER selects the repository backend. JSON files remain the
+ * default everywhere until T05B implements the Postgres repositories.
+ * Production must opt into 'postgres' explicitly (see validateEnv).
+ */
+function parsePersistenceDriver(value) {
+  if (!value || value.trim() === '') {
+    return 'json';
+  }
+  const driver = value.trim().toLowerCase();
+  if (!PERSISTENCE_DRIVERS.includes(driver)) {
+    throw new Error(`PERSISTENCE_DRIVER must be one of: ${PERSISTENCE_DRIVERS.join(', ')}`);
+  }
+  return driver;
+}
+
 /**
  * Build a typed configuration object from process.env.
  * Throws on invalid values so the process fails fast.
@@ -112,6 +130,11 @@ export function loadConfig(rawEnv = process.env) {
     NODE_ENV: nodeEnv,
     PORT: parsePort(rawEnv.PORT, 22024),
     DATA_DIR: rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
+
+    // Persistence: JSON files by default; PostgreSQL is mandatory in production
+    // (see validateEnv). Repositories still read/write JSON until T05B.
+    PERSISTENCE_DRIVER: parsePersistenceDriver(rawEnv.PERSISTENCE_DRIVER),
+    DATABASE_URL: rawEnv.DATABASE_URL,
 
     JWT_SECRET: rawEnv.JWT_SECRET,
     JWT_ISSUER: rawEnv.JWT_ISSUER || 'aiStickers',
@@ -155,6 +178,14 @@ export function loadConfig(rawEnv = process.env) {
   };
 
   config.CORS_ORIGINS = parseCorsOrigins(rawEnv.CORS_ORIGINS, isProduction);
+
+  // If a DATABASE_URL is provided (development testing or production) it must
+  // be a well-formed PostgreSQL connection string, regardless of driver.
+  if (config.DATABASE_URL && config.DATABASE_URL.trim() !== '') {
+    if (!/^postgres(ql)?:\/\//.test(config.DATABASE_URL)) {
+      throw new Error('DATABASE_URL must be a postgresql:// connection string');
+    }
+  }
 
   const rawTestJwts = rawEnv.TEST_JWTS;
   if (isProduction && rawTestJwts && rawTestJwts.trim() !== '') {
@@ -200,6 +231,11 @@ export function validateEnv(config) {
   requireString('REPLICATE_MODEL', 1);
   requireString('REPLICATE_IMG2VID_MODEL', 1);
   requireString('GOOGLE_PLAY_SERVICE_ACCOUNT', 1);
+
+  if (config.PERSISTENCE_DRIVER !== 'postgres') {
+    throw new Error("PERSISTENCE_DRIVER must be 'postgres' in production");
+  }
+  requireString('DATABASE_URL', 1);
 
   try {
     JSON.parse(config.GOOGLE_PLAY_SERVICE_ACCOUNT);

@@ -52,6 +52,8 @@ describe('buildConfig and validateEnv', () => {
     process.env.REPLICATE_IMG2VID_MODEL = 'bytedance/seedance-1-pro';
     process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account' });
     process.env.CORS_ORIGINS = 'https://app.example.com';
+    process.env.PERSISTENCE_DRIVER = 'postgres';
+    process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/aistickers';
     Object.assign(process.env, extra);
   }
 
@@ -97,6 +99,48 @@ describe('buildConfig and validateEnv', () => {
       expect(() => validateEnv(config)).toThrow();
     });
   }
+
+  it('development defaults PERSISTENCE_DRIVER to json without requiring DATABASE_URL', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.JWT_SECRET = 'dev-jwt-secret-minimum-32-chars-long';
+    process.env.CLIENT_SECRET = 'dev-client-secret-minimum-32-chars';
+
+    const config = buildConfig();
+    expect(config.PERSISTENCE_DRIVER).toBe('json');
+    expect(config.DATABASE_URL).toBeUndefined();
+    expect(() => validateEnv(config)).not.toThrow();
+  });
+
+  it('rejects an unknown PERSISTENCE_DRIVER value', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.JWT_SECRET = 'dev-jwt-secret-minimum-32-chars-long';
+    process.env.CLIENT_SECRET = 'dev-client-secret-minimum-32-chars';
+    process.env.PERSISTENCE_DRIVER = 'mongo';
+
+    expect(() => buildConfig()).toThrow('PERSISTENCE_DRIVER');
+  });
+
+  it('rejects a malformed DATABASE_URL regardless of environment', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.JWT_SECRET = 'dev-jwt-secret-minimum-32-chars-long';
+    process.env.CLIENT_SECRET = 'dev-client-secret-minimum-32-chars';
+    process.env.DATABASE_URL = 'mysql://user:pass@localhost:3306/db';
+
+    expect(() => buildConfig()).toThrow('DATABASE_URL');
+  });
+
+  it('production requires PERSISTENCE_DRIVER=postgres', () => {
+    setProductionEnv({ PERSISTENCE_DRIVER: 'json' });
+    const config = buildConfig();
+    expect(() => validateEnv(config)).toThrow('PERSISTENCE_DRIVER');
+  });
+
+  it('production requires DATABASE_URL', () => {
+    setProductionEnv();
+    delete process.env.DATABASE_URL;
+    const config = buildConfig();
+    expect(() => validateEnv(config)).toThrow('DATABASE_URL');
+  });
 
   it('production rejects an invalid GOOGLE_PLAY_SERVICE_ACCOUNT JSON', () => {
     const invalidServiceAccount = 'not-json';

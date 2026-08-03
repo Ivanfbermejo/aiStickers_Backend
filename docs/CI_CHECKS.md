@@ -16,6 +16,12 @@ Runs on every PR and push to `main`:
 - Starts the server with dummy environment variables and checks the
   `/health` endpoint.
 
+Also starts a `postgres:16-alpine` service container so the real-database
+tests under `tests/integration/postgres/` run (migrations, constraints,
+rollback, connection lifecycle — see `docs/data-model.md`). `DATABASE_URL`
+in this workflow only feeds those tests; the app itself keeps
+`PERSISTENCE_DRIVER=json` and never touches this database.
+
 If the smoke start fails, review the server output in the workflow logs. The
 most common cause is a missing `import` or an unhandled exception during
 `container.initialize()`.

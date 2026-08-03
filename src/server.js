@@ -9,6 +9,7 @@ import fs from 'fs';
 // Configuration
 import { env, validateEnv } from './config/env.js';
 import { container } from './config/container.js';
+import { pingDatabase, disconnectPrisma } from './infrastructure/persistence/prisma/client.js';
 
 // Middleware
 import { requireHmac } from './infrastructure/web/middleware/hmac.middleware.js';
@@ -141,6 +142,13 @@ export async function createApp() {
       const probeFile = path.join(env.DATA_DIR, 'uploads', '.ready-probe');
       await fs.promises.writeFile(probeFile, new Date().toISOString());
       await fs.promises.rm(probeFile, { force: true });
+
+      // Only probe Postgres when it is actually configured. JSON remains the
+      // default persistence in development until T05B cuts repositories over.
+      if (env.DATABASE_URL) {
+        await pingDatabase();
+      }
+
       res.json({ status: 'ready', timestamp: new Date().toISOString() });
     } catch (error) {
       console.error('Readiness probe failed:', error);
@@ -319,4 +327,5 @@ export async function startServer(options = {}) {
 export async function stopServer({ server, container }) {
   container.services.generationJobWorker?.stop();
   await new Promise((resolve) => server.close(() => resolve()));
+  await disconnectPrisma();
 }

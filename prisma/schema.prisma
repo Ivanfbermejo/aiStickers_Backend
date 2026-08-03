@@ -1,0 +1,299 @@
+// aiStickers Backend — transactional schema (T05A)
+//
+// This schema is intentionally NOT wired into the application yet. JSON
+// repositories remain the source of truth in development (see T05B for the
+// repository cutover). It exists so PostgreSQL can be provisioned, migrated
+// and exercised independently before any real data is touched.
+//
+// See docs/data-model.md for the full rationale (delete semantics, unique
+// constraints, check constraints added by hand in the migration SQL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authIdentities AuthIdentity[]
+  authSessions   AuthSession[]
+  balance        Balance?
+  ledgerEntries  LedgerEntry[]
+  purchases      Purchase[]
+  packages       Package[]
+  stickers       Sticker[]
+  generationJobs GenerationJob[]
+
+  @@map("users")
+}
+
+enum AuthProvider {
+  GOOGLE
+  APPLE
+}
+
+// One row per external identity provider bound to a user. The Google `sub`
+// (never the email) is the durable subject; email may change upstream.
+model AuthIdentity {
+  id        String       @id @default(uuid())
+  userId    String
+  provider  AuthProvider
+  subject   String
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+// Refresh-token session with rotation family tracking.
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String    @unique
+  family           String
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime
+  rotatedTo        String?   @unique
+  revokedAt        DateTime?
+  metadata         Json      @default("{}")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Balance & ledger
+// ---------------------------------------------------------------------------
+
+// Exactly one balance row per user (userId is both PK and FK).
+model Balance {
+  userId         String   @id
+  stickerDollars Int      @default(0)
+  totalPurchased Int      @default(0)
+  totalSpent     Int      @default(0)
+  version        Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("balances")
+}
+
+enum LedgerEntryType {
+  PURCHASE
+  SPEND
+  REFUND
+  ADJUSTMENT
+}
+
+// Append-only audit trail of every balance movement.
+model LedgerEntry {
+  id             String          @id @default(uuid())
+  userId         String
+  type           LedgerEntryType
+  amount         Int
+  balanceAfter   Int
+  idempotencyKey String?         @unique
+  metadata       Json            @default("{}")
+  createdAt      DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([type])
+  @@map("ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Purchases
+// ---------------------------------------------------------------------------
+
+enum PurchaseProvider {
+  GOOGLE_PLAY
+  APPLE_APP_STORE
+}
+
+enum PurchaseStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+model Purchase {
+  id                String           @id @default(uuid())
+  userId            String
+  provider          PurchaseProvider
+  productId         String
+  // Purchase tokens/receipts are opaque and sensitive: store a hash for
+  // uniqueness/lookup, never the raw token.
+  purchaseTokenHash String
+  orderId           String?
+  status            PurchaseStatus   @default(PENDING)
+  stickerAmount     Int
+  createdAt         DateTime         @default(now())
+  verifiedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, purchaseTokenHash])
+  @@index([userId, status])
+  @@index([provider, orderId])
+  @@map("purchases")
+}
+
+// ---------------------------------------------------------------------------
+// Content: packages, stickers, generation jobs
+// ---------------------------------------------------------------------------
+
+enum PackType {
+  STATIC
+  ANIMATED
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model Package {
+  id            String       @id @default(uuid())
+  userId        String
+  name          String
+  author        String?
+  icon          String?
+  description   String?
+  isPublic      Boolean      @default(false)
+  stickerCount  Int          @default(0)
+  category      String?
+  tags          String[]     @default([])
+  platform      String?
+  packType      PackType     @default(STATIC)
+  trayIconUrl   String?
+  exportStatus  ExportStatus @default(PENDING)
+  whatsappReady Boolean      @default(false)
+  exportError   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stickers Sticker[]
+  jobs     GenerationJob[]
+
+  @@index([userId])
+  @@index([isPublic])
+  @@map("packages")
+}
+
+enum StickerStatus {
+  PENDING
+  PROCESSING
+  DONE
+  ERROR
+}
+
+model Sticker {
+  id              String        @id @default(uuid())
+  userId          String
+  packageId       String?
+  name            String?
+  imageUrl        String?
+  thumbnailUrl    String?
+  webpUrl         String?
+  animatedWebpUrl String?
+  whatsappWebpUrl String?
+  replicateId     String?
+  // Prepared for object-storage cutover; unused until repositories move off JSON.
+  objectKey       String?
+  status          StickerStatus @default(PENDING)
+  prompt          String?
+  cost            Int           @default(1)
+  width           Int?
+  height          Int?
+  durationMs      Int?
+  sizeBytes       Int?
+  mimeType        String?
+  exportStatus    ExportStatus  @default(PENDING)
+  exportError     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package        Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  generationJobs GenerationJob[]
+
+  @@index([userId])
+  @@index([packageId])
+  @@index([status])
+  @@map("stickers")
+}
+
+enum GenerationJobType {
+  IMAGE_STICKER
+  ANIMATED_STICKER
+  IMG2VID
+}
+
+enum GenerationJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model GenerationJob {
+  id                   String              @id @default(uuid())
+  userId               String
+  type                 GenerationJobType
+  status               GenerationJobStatus @default(QUEUED)
+  currentStep          String              @default("queued")
+  progress             Int                 @default(0)
+  packageId            String?
+  stickerId            String
+  input                Json                @default("{}")
+  result               Json?
+  provider             String?
+  // Prepared for async provider polling; unused until repositories move off JSON.
+  providerPredictionId String?
+  cost                 Int                 @default(1)
+  attempts             Int                 @default(0)
+  lockedAt             DateTime?
+  completedAt          DateTime?
+  refundedAt           DateTime?
+  // Sanitized error message only — never store raw provider/internal errors.
+  errorMessage         String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package Package? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  sticker Sticker  @relation(fields: [stickerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([stickerId])
+  @@index([status, lockedAt])
+  @@map("generation_jobs")
+}

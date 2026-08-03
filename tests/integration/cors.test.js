@@ -18,6 +18,8 @@ function setProductionEnv() {
   process.env.REPLICATE_IMG2VID_MODEL = 'bytedance/seedance-1-pro';
   process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account' });
   process.env.CORS_ORIGINS = 'https://allowed.example.com,https://app.example.com';
+  process.env.PERSISTENCE_DRIVER = 'postgres';
+  process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/aistickers';
 }
 
 describe('CORS in production', () => {

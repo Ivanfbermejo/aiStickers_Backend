@@ -12,6 +12,9 @@ services:
       - "22024:22024"
     volumes:
       - aistickers_dev_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     init: true
     restart: unless-stopped
     cpus: "1.0"
@@ -28,6 +31,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # T05A: PostgreSQL for schema/migration work. Repositories still read/write
+  # JSON until T05B — this service is provisioned ahead of that cutover.
+  # Intentionally has NO "ports:" mapping: only reachable from other
+  # containers on the compose network, never from the host or the internet.
+  db:
+    image: postgres:16-alpine
+    # POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB come from .env.docker
+    # (the official postgres image reads them directly from its own
+    # environment; no compose-level interpolation is used here on purpose).
+    env_file:
+      - .env.docker
+    volumes:
+      - aistickers_dev_db:/var/lib/postgresql/data
+    init: true
+    restart: unless-stopped
+    cpus: "1.0"
+    mem_limit: 1g
+    healthcheck:
+      # "$$" escapes compose's own interpolation so the shell variables are
+      # expanded inside the container, against the env injected by env_file.
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   aistickers_dev_data:
     name: aistickers_dev_data
+  aistickers_dev_db:
+    name: aistickers_dev_db
