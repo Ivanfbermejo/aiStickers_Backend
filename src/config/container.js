@@ -5,12 +5,14 @@ import { JsonPurchaseRepository } from '../infrastructure/persistence/json/json-
 import { JsonStickerRepository } from '../infrastructure/persistence/json/json-sticker.repository.js';
 import { JsonPackageRepository } from '../infrastructure/persistence/json/json-package.repository.js';
 import { JsonGenerationJobRepository } from '../infrastructure/persistence/json/json-generation-job.repository.js';
+import { JsonSessionRepository } from '../infrastructure/persistence/json/json-session.repository.js';
 
 import { JwtService } from '../infrastructure/auth/jwt.service.js';
 import { GoogleAuthService } from '../infrastructure/auth/google-auth.service.js';
 import { PaymentProviderService } from '../infrastructure/payment/payment-provider.service.js';
 import { FraudDetectionService } from '../infrastructure/security/fraud-detection.service.js';
 import { PlanService } from '../application/services/plan.service.js';
+import { SessionService } from '../application/services/session.service.js';
 
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
 import { ReplicateAnimationProvider } from '../infrastructure/ai/replicate-animation.provider.js';
@@ -54,6 +56,7 @@ export class Container {
     this.repositories.sticker = new JsonStickerRepository(env.DATA_DIR);
     this.repositories.package = new JsonPackageRepository(env.DATA_DIR);
     this.repositories.generationJob = new JsonGenerationJobRepository(env.DATA_DIR);
+    this.repositories.session = new JsonSessionRepository(env.DATA_DIR);
 
     // Services (Infrastructure)
     this.services.jwt = new JwtService();
@@ -61,6 +64,10 @@ export class Container {
     this.services.paymentProvider = new PaymentProviderService();
     this.services.fraudDetection = new FraudDetectionService();
     this.services.plan = new PlanService();
+    this.services.session = new SessionService({
+      sessionRepository: this.repositories.session,
+      jwtService: this.services.jwt
+    });
 
     // AI Providers (Infrastructure)
     this.services.imageProvider = new ReplicateImageProvider();

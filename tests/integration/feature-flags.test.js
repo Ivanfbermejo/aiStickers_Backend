@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
-import jwt from 'jsonwebtoken';
 import { buildTestApp } from '../helpers/app.js';
 import { signRequest } from '../helpers/hmac.js';
+import { makeUserAccessToken } from '../helpers/token.js';
 import { Balance } from '../../src/domain/entities/balance.entity.js';
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET;
 
 function makeUserToken(sub = 'user@example.com') {
-  return jwt.sign({ sub, type: 'user', scope: ['stickers'] }, JWT_SECRET, { expiresIn: '1h' });
+  return makeUserAccessToken(sub);
 }
 
 async function seedBalance(container, userId, amount) {

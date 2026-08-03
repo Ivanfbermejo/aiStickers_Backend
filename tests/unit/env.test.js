@@ -112,7 +112,8 @@ describe('buildConfig and validateEnv', () => {
   });
 
   it('production rejects short secrets', () => {
-    process.env.JWT_SECRET = 'short';
+    const shortSecret = 'short';
+    setProductionEnv({ JWT_SECRET: shortSecret });
     const config = buildConfig();
     expect(() => validateEnv(config)).toThrow('JWT_SECRET');
   });

@@ -8,6 +8,8 @@ export default defineConfig({
       NODE_ENV: 'test',
       PORT: '22024',
       JWT_SECRET: process.env.JWT_SECRET ?? 'test_jwt_secret_minimum_32_chars_long',
+      JWT_ISSUER: 'aiStickers-test',
+      JWT_AUDIENCE: 'aiStickers-backend-test',
       JWT_EXPIRES_IN: '1h',
       CLIENT_ID: process.env.CLIENT_ID ?? 'ai-stickers-test',
       CLIENT_SECRET: process.env.CLIENT_SECRET ?? 'test_client_secret_minimum_32_chars',

@@ -103,7 +103,10 @@ export function loadConfig(rawEnv = process.env) {
     DATA_DIR: rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
 
     JWT_SECRET: rawEnv.JWT_SECRET,
-    JWT_EXPIRES_IN: rawEnv.JWT_EXPIRES_IN || '24h',
+    JWT_ISSUER: rawEnv.JWT_ISSUER || 'aiStickers',
+    JWT_AUDIENCE: rawEnv.JWT_AUDIENCE || 'aiStickers-backend',
+    JWT_EXPIRES_IN: rawEnv.JWT_EXPIRES_IN || '15m',
+    REFRESH_TOKEN_EXPIRES_IN_DAYS: 30,
 
     // In production explicit values are required; defaults are development-only.
     CLIENT_ID: isProduction ? rawEnv.CLIENT_ID : (rawEnv.CLIENT_ID || 'ai-stickers'),

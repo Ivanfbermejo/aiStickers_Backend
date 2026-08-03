@@ -23,9 +23,13 @@ export class GoogleAuthService {
       });
       
       const payload = ticket.getPayload();
-      
+
+      if (!payload.email_verified) {
+        throw new Error('Google email not verified');
+      }
+
       return {
-        sub: payload.sub, // Google unique ID
+        sub: payload.sub, // Google unique ID (immutable identifier)
         email: payload.email,
         name: payload.name,
         picture: payload.picture,
