@@ -87,4 +87,44 @@ export class JsonSessionRepository extends ISessionRepository {
     }
     await this.saveToFile();
   }
+
+  async rotate(refreshTokenHash, candidate) {
+    const parent = Array.from(this.cache.values()).find(s => s.refreshTokenHash === refreshTokenHash);
+    if (!parent) {
+      throw new Error('Invalid refresh token');
+    }
+    if (parent.revokedAt) {
+      throw new Error('Refresh token revoked');
+    }
+    if (new Date(parent.expiresAt) < new Date()) {
+      throw new Error('Refresh token expired');
+    }
+    if (parent.rotatedTo) {
+      for (const raw of this.cache.values()) {
+        if (raw.family === parent.family && !raw.revokedAt) {
+          raw.revokedAt = new Date().toISOString();
+        }
+      }
+      await this.saveToFile();
+      throw new Error('Refresh token reused');
+    }
+
+    parent.rotatedTo = candidate.id;
+    const metadata = candidate.metadata || parent.metadata || {};
+    const child = {
+      id: candidate.id,
+      userId: parent.userId,
+      refreshTokenHash: candidate.refreshTokenHash,
+      family: parent.family,
+      createdAt: new Date().toISOString(),
+      expiresAt: parent.expiresAt,
+      rotatedTo: null,
+      revokedAt: null,
+      metadata
+    };
+    this.cache.set(parent.id, parent);
+    this.cache.set(child.id, child);
+    await this.saveToFile();
+    return this._toSession(child);
+  }
 }

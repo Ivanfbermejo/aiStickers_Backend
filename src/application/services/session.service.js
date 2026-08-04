@@ -65,47 +65,23 @@ export class SessionService {
   /**
    * Rotate a refresh token. The current one becomes unusable and a new one is issued.
    * If an old token is reused, the whole family is revoked (token theft detection).
+   *
+   * The repository performs the rotation atomically:
+   * - it only succeeds when rotatedTo is null, the token is not revoked and not expired;
+   * - the new session inherits the original family and absolute expiresAt ceiling.
    */
   async rotateRefreshToken(refreshToken) {
     const hash = this._hashToken(refreshToken);
-    const session = await this.sessionRepository.findByRefreshTokenHash(hash);
-
-    if (!session) {
-      throw new Error('Invalid refresh token');
-    }
-
-    if (session.isRevoked()) {
-      throw new Error('Refresh token revoked');
-    }
-
-    if (session.isExpired()) {
-      throw new Error('Refresh token expired');
-    }
-
-    // If the token has already been rotated, this is a reuse attempt -> revoke family.
-    if (session.rotatedTo) {
-      await this.sessionRepository.revokeFamily(session.family);
-      throw new Error('Refresh token reused');
-    }
-
     const newRefreshToken = this._generateOpaqueToken();
     const newRefreshTokenHash = this._hashToken(newRefreshToken);
-    const newFamily = session.family;
 
-    const newSession = new Session({
+    const descendant = await this.sessionRepository.rotate(hash, {
       id: randomUUID(),
-      userId: session.userId,
       refreshTokenHash: newRefreshTokenHash,
-      family: newFamily,
-      expiresAt: addDays(new Date(), env.REFRESH_TOKEN_EXPIRES_IN_DAYS).toISOString(),
-      metadata: session.metadata
+      metadata: {}
     });
 
-    session.markRotatedTo(newSession.id);
-    await this.sessionRepository.update(session);
-    await this.sessionRepository.save(newSession);
-
-    const accessToken = this.jwtService.generateAccessToken({ sub: session.userId });
+    const accessToken = this.jwtService.generateAccessToken({ sub: descendant.userId });
 
     return {
       accessToken,
