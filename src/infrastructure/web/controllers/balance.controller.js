@@ -31,51 +31,6 @@ export class BalanceController {
   }
   
   /**
-   * Spend Balance
-   * POST /api/v1/users/balance/spend
-   */
-  static async spendBalance(req, res) {
-    try {
-      const { amount, productId } = req.body;
-      const userId = req.user.sub;
-      
-      if (!amount || amount <= 0) {
-        return res.status(400).json({
-          error: 'Invalid amount',
-          message: 'Amount must be positive number'
-        });
-      }
-      
-      const result = await container.useCases.spendBalance.execute({
-        userId,
-        amount,
-        productId
-      });
-      
-      res.json({
-        success: true,
-        amount: result.amount,
-        newBalance: result.newBalance,
-        transactionId: result.transactionId
-      });
-    } catch (error) {
-      console.error('Spend balance failed:', error);
-      
-      if (error.message === 'Insufficient balance') {
-        return res.status(400).json({
-          error: 'Insufficient balance',
-          message: 'Not enough StickerDollars'
-        });
-      }
-      
-      res.status(500).json({
-        error: 'Transaction failed',
-        message: error.message
-      });
-    }
-  }
-  
-  /**
    * Get Transaction History
    * GET /api/v1/users/balance/history
    */

@@ -3,6 +3,7 @@ import { ValidatePurchaseUseCase } from '../../src/application/use-cases/purchas
 import { PlanService } from '../../src/application/services/plan.service.js';
 import { Balance } from '../../src/domain/entities/balance.entity.js';
 import { FraudDetectionService } from '../../src/infrastructure/security/fraud-detection.service.js';
+import { InMemoryUnitOfWork } from '../../src/infrastructure/persistence/unit-of-work.js';
 
 class FakeBalanceRepository {
   constructor() {
@@ -40,6 +41,9 @@ class FakePurchaseRepository {
   constructor() {
     this.purchases = [];
   }
+  async findByToken(token) {
+    return this.purchases.find(p => p.purchaseToken === token) || null;
+  }
   async save(purchase) {
     this.purchases.push(purchase.toJSON());
     return purchase;
@@ -62,13 +66,19 @@ describe('Google Play pending purchase flow (characterization)', () => {
     balanceRepository = new FakeBalanceRepository();
     transactionRepository = new FakeTransactionRepository();
     purchaseRepository = new FakePurchaseRepository();
+    const unitOfWork = new InMemoryUnitOfWork({
+      balance: balanceRepository,
+      transaction: transactionRepository,
+      purchase: purchaseRepository
+    });
     useCase = new ValidatePurchaseUseCase({
       purchaseRepository,
       transactionRepository,
       balanceRepository,
       paymentProviderService: new PendingPaymentProvider(),
       fraudDetectionService: new FraudDetectionService(),
-      planService: new PlanService()
+      planService: new PlanService(),
+      unitOfWork
     });
   });
 
@@ -94,5 +104,9 @@ describe('Google Play pending purchase flow (characterization)', () => {
 
     const balance = await balanceRepository.findByUserId('user-1');
     expect(balance).toBeNull();
+
+    const purchase = await purchaseRepository.findByToken('google-token-123');
+    expect(purchase).not.toBeNull();
+    expect(purchase.status).toBe('PENDING');
   });
 });

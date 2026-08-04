@@ -16,21 +16,34 @@ function toBalance(raw) {
 }
 
 export class PostgresBalanceRepository extends IBalanceRepository {
-  async findByUserId(userId) {
-    const raw = await getPrismaClient().balance.findUnique({ where: { userId } });
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma(tx) {
+    return tx || this.prisma || getPrismaClient();
+  }
+
+  withPrisma(prismaClient) {
+    return new PostgresBalanceRepository(prismaClient);
+  }
+
+  async findByUserId(userId, tx) {
+    const raw = await this._getPrisma(tx).balance.findUnique({ where: { userId } });
     return toBalance(raw);
   }
 
-  async save(balance) {
-    const prisma = getPrismaClient();
+  async save(balance, tx) {
+    const prisma = this._getPrisma(tx);
     const existing = await prisma.balance.findUnique({ where: { userId: balance.userId } });
 
     if (existing) {
       if (existing.version !== balance.version) {
         throw new Error(`Balance conflict for user ${balance.userId}`);
       }
-      await prisma.balance.update({
-        where: { userId: balance.userId },
+      const update = await prisma.balance.updateMany({
+        where: { userId: balance.userId, version: balance.version },
         data: {
           stickerDollars: balance.stickerDollars,
           totalPurchased: balance.totalPurchased,
@@ -39,6 +52,9 @@ export class PostgresBalanceRepository extends IBalanceRepository {
           updatedAt: new Date(balance.updatedAt)
         }
       });
+      if (update.count === 0) {
+        throw new Error(`Balance conflict for user ${balance.userId}`);
+      }
       balance.version += 1;
     } else {
       await prisma.balance.create({
@@ -57,18 +73,18 @@ export class PostgresBalanceRepository extends IBalanceRepository {
     return balance;
   }
 
-  async update(balance) {
-    return this.save(balance);
+  async update(balance, tx) {
+    return this.save(balance, tx);
   }
 
-  async createForUser(userId) {
+  async createForUser(userId, tx) {
     const balance = new Balance({ userId, stickerDollars: 0 });
-    await this.save(balance);
+    await this.save(balance, tx);
     return balance;
   }
 
-  async exists(userId) {
-    const raw = await getPrismaClient().balance.findUnique({ where: { userId } });
+  async exists(userId, tx) {
+    const raw = await this._getPrisma(tx).balance.findUnique({ where: { userId } });
     return raw !== null;
   }
 }

@@ -5,6 +5,7 @@ import { GoogleAuthService } from '../infrastructure/auth/google-auth.service.js
 import { PaymentProviderService } from '../infrastructure/payment/payment-provider.service.js';
 import { FraudDetectionService } from '../infrastructure/security/fraud-detection.service.js';
 import { PlanService } from '../application/services/plan.service.js';
+import { CostService } from '../application/services/cost.service.js';
 import { SessionService } from '../application/services/session.service.js';
 
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
@@ -50,6 +51,7 @@ export class Container {
     this.services.paymentProvider = new PaymentProviderService();
     this.services.fraudDetection = new FraudDetectionService();
     this.services.plan = new PlanService();
+    this.services.cost = new CostService();
     this.services.session = new SessionService({
       sessionRepository: this.repositories.session,
       jwtService: this.services.jwt
@@ -73,7 +75,8 @@ export class Container {
       balanceRepository: this.repositories.balance,
       paymentProviderService: this.services.paymentProvider,
       fraudDetectionService: this.services.fraudDetection,
-      planService: this.services.plan
+      planService: this.services.plan,
+      unitOfWork: this.repositories.unitOfWork
     });
     
     this.useCases.getBalance = new GetBalanceUseCase({
@@ -82,7 +85,9 @@ export class Container {
     
     this.useCases.spendBalance = new SpendBalanceUseCase({
       balanceRepository: this.repositories.balance,
-      transactionRepository: this.repositories.transaction
+      transactionRepository: this.repositories.transaction,
+      costService: this.services.cost,
+      unitOfWork: this.repositories.unitOfWork
     });
     
     this.useCases.getTransactionHistory = new GetTransactionHistoryUseCase({
@@ -91,7 +96,8 @@ export class Container {
 
     this.useCases.refundBalance = new RefundBalanceUseCase({
       balanceRepository: this.repositories.balance,
-      transactionRepository: this.repositories.transaction
+      transactionRepository: this.repositories.transaction,
+      unitOfWork: this.repositories.unitOfWork
     });
 
     this.useCases.createGenerationJob = new CreateGenerationJobUseCase({

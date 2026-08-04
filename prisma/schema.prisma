@@ -135,9 +135,12 @@ enum PurchaseProvider {
 }
 
 enum PurchaseStatus {
+  RECEIVED
   PENDING
   VERIFIED
-  FAILED
+  CREDITED
+  REJECTED
+  REFUNDED
 }
 
 model Purchase {
@@ -149,17 +152,20 @@ model Purchase {
   // uniqueness/lookup, never the raw token.
   purchaseTokenHash String
   orderId           String?
-  status            PurchaseStatus   @default(PENDING)
+  status            PurchaseStatus   @default(RECEIVED)
   stickerAmount     Int
   metadata          Json             @default("{}")
   createdAt         DateTime         @default(now())
   verifiedAt        DateTime?
+  reconciledAt      DateTime?
+  reconcileAttempts Int              @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([provider, purchaseTokenHash])
   @@index([userId, status])
   @@index([provider, orderId])
+  @@index([status, reconcileAttempts, createdAt])
   @@map("purchases")
 }
 

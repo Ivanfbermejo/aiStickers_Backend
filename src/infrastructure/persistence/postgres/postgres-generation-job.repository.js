@@ -60,8 +60,21 @@ function toJobData(job) {
 }
 
 export class PostgresGenerationJobRepository extends IGenerationJobRepository {
-  async save(job) {
-    const prisma = getPrismaClient();
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma(tx) {
+    return tx || this.prisma || getPrismaClient();
+  }
+
+  withPrisma(prismaClient) {
+    return new PostgresGenerationJobRepository(prismaClient);
+  }
+
+  async save(job, tx) {
+    const prisma = this._getPrisma(tx);
     const data = toJobData(job);
     await prisma.generationJob.upsert({
       where: { id: job.id },
@@ -71,43 +84,43 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return job;
   }
 
-  async update(job) {
-    return this.save(job);
+  async update(job, tx) {
+    return this.save(job, tx);
   }
 
-  async findById(id) {
-    const raw = await getPrismaClient().generationJob.findUnique({ where: { id } });
+  async findById(id, tx) {
+    const raw = await this._getPrisma(tx).generationJob.findUnique({ where: { id } });
     return toJob(raw);
   }
 
-  async findByUserId(userId) {
-    const rows = await getPrismaClient().generationJob.findMany({
+  async findByUserId(userId, tx) {
+    const rows = await this._getPrisma(tx).generationJob.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' }
     });
     return rows.map(toJob);
   }
 
-  async findPending() {
-    const rows = await getPrismaClient().generationJob.findMany({
+  async findPending(tx) {
+    const rows = await this._getPrisma(tx).generationJob.findMany({
       where: { status: 'QUEUED' },
       orderBy: { createdAt: 'asc' }
     });
     return rows.map(toJob);
   }
 
-  async findByStickerId(stickerId) {
-    const raw = await getPrismaClient().generationJob.findFirst({ where: { stickerId } });
+  async findByStickerId(stickerId, tx) {
+    const raw = await this._getPrisma(tx).generationJob.findFirst({ where: { stickerId } });
     return toJob(raw);
   }
 
-  async delete(id) {
-    await getPrismaClient().generationJob.delete({ where: { id } });
+  async delete(id, tx) {
+    await this._getPrisma(tx).generationJob.delete({ where: { id } });
     return true;
   }
 
-  async deleteByUserId(userId) {
-    const result = await getPrismaClient().generationJob.deleteMany({ where: { userId } });
+  async deleteByUserId(userId, tx) {
+    const result = await this._getPrisma(tx).generationJob.deleteMany({ where: { userId } });
     return result.count;
   }
 
@@ -116,7 +129,7 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
    * Returns the claimed GenerationJob, or null if none are available.
    */
   async claimNextPendingJob() {
-    const prisma = getPrismaClient();
+    const prisma = this._getPrisma();
     const [raw] = await prisma.$queryRaw`
       UPDATE "generation_jobs"
       SET status = 'PROCESSING', "currentStep" = 'processing', "lockedAt" = NOW(), "updatedAt" = NOW()

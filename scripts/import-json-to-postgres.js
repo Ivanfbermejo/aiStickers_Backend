@@ -287,9 +287,8 @@ function toDate(value, fallback = new Date()) {
   return d;
 }
 
-async function importData(prisma, data, summary) {
-  const existing = await prisma.user.count();
-  summary.existingUsersBefore = existing;
+async function importData(prisma, data, summary, existingBefore) {
+  summary.existingUsersBefore = existingBefore;
 
   // Users
   for (const user of data.users) {
@@ -589,8 +588,9 @@ async function main() {
     return;
   }
 
+  const existingBefore = await prisma.user.count();
   await prisma.$transaction(async (tx) => {
-    await importData(tx, data, summary);
+    await importData(tx, data, summary, existingBefore);
   });
 
   console.log('IMPORTED: records written to PostgreSQL.');

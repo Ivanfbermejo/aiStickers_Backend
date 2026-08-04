@@ -61,6 +61,12 @@ export class JsonPurchaseRepository extends IPurchaseRepository {
     
     return purchases.map(p => new Purchase(p));
   }
+
+  async findPendingForReconcile(_limit) {
+    // The JSON driver does not support reconciliation: financial writes are
+    // intentionally disabled, so there are never pending credits to reconcile.
+    return [];
+  }
   
   async save(purchase) {
     this.cache.set(purchase.id, purchase.toJSON());

@@ -16,32 +16,45 @@ function toUser(raw) {
 }
 
 export class PostgresUserRepository extends IUserRepository {
-  async findById(id) {
-    const raw = await getPrismaClient().user.findUnique({
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma(tx) {
+    return tx || this.prisma || getPrismaClient();
+  }
+
+  withPrisma(prismaClient) {
+    return new PostgresUserRepository(prismaClient);
+  }
+
+  async findById(id, tx) {
+    const raw = await this._getPrisma(tx).user.findUnique({
       where: { id },
       include: { authIdentities: true }
     });
     return toUser(raw);
   }
 
-  async findByEmail(email) {
-    const raw = await getPrismaClient().user.findUnique({
+  async findByEmail(email, tx) {
+    const raw = await this._getPrisma(tx).user.findUnique({
       where: { email },
       include: { authIdentities: true }
     });
     return toUser(raw);
   }
 
-  async findByGoogleId(googleId) {
-    const raw = await getPrismaClient().authIdentity.findUnique({
+  async findByGoogleId(googleId, tx) {
+    const raw = await this._getPrisma(tx).authIdentity.findUnique({
       where: { provider_subject: { provider: 'GOOGLE', subject: googleId } },
       include: { user: { include: { authIdentities: true } } }
     });
     return raw ? toUser(raw.user) : null;
   }
 
-  async save(user) {
-    const prisma = getPrismaClient();
+  async save(user, tx) {
+    const prisma = this._getPrisma(tx);
     await prisma.user.upsert({
       where: { id: user.id },
       update: {
@@ -73,17 +86,17 @@ export class PostgresUserRepository extends IUserRepository {
     return user;
   }
 
-  async update(user) {
-    return this.save(user);
+  async update(user, tx) {
+    return this.save(user, tx);
   }
 
-  async delete(id) {
-    await getPrismaClient().user.delete({ where: { id } });
+  async delete(id, tx) {
+    await this._getPrisma(tx).user.delete({ where: { id } });
     return true;
   }
 
-  async exists(email) {
-    const raw = await getPrismaClient().user.findUnique({ where: { email } });
+  async exists(email, tx) {
+    const raw = await this._getPrisma(tx).user.findUnique({ where: { email } });
     return raw !== null;
   }
 }

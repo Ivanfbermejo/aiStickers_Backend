@@ -76,42 +76,55 @@ function toStickerData(sticker) {
 }
 
 export class PostgresStickerRepository extends IStickerRepository {
-  async findById(id) {
-    const raw = await getPrismaClient().sticker.findUnique({ where: { id } });
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma(tx) {
+    return tx || this.prisma || getPrismaClient();
+  }
+
+  withPrisma(prismaClient) {
+    return new PostgresStickerRepository(prismaClient);
+  }
+
+  async findById(id, tx) {
+    const raw = await this._getPrisma(tx).sticker.findUnique({ where: { id } });
     return toSticker(raw);
   }
 
-  async findByUserId(userId) {
-    const rows = await getPrismaClient().sticker.findMany({
+  async findByUserId(userId, tx) {
+    const rows = await this._getPrisma(tx).sticker.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' }
     });
     return rows.map(toSticker);
   }
 
-  async findByPackageId(packageId) {
-    const rows = await getPrismaClient().sticker.findMany({
+  async findByPackageId(packageId, tx) {
+    const rows = await this._getPrisma(tx).sticker.findMany({
       where: { packageId },
       orderBy: { createdAt: 'desc' }
     });
     return rows.map(toSticker);
   }
 
-  async findByReplicateId(replicateId) {
-    const raw = await getPrismaClient().sticker.findFirst({ where: { replicateId } });
+  async findByReplicateId(replicateId, tx) {
+    const raw = await this._getPrisma(tx).sticker.findFirst({ where: { replicateId } });
     return toSticker(raw);
   }
 
-  async findByUserIdAndStatus(userId, status) {
-    const rows = await getPrismaClient().sticker.findMany({
+  async findByUserIdAndStatus(userId, status, tx) {
+    const rows = await this._getPrisma(tx).sticker.findMany({
       where: { userId, status: toStickerStatus(status) },
       orderBy: { createdAt: 'desc' }
     });
     return rows.map(toSticker);
   }
 
-  async save(sticker) {
-    const prisma = getPrismaClient();
+  async save(sticker, tx) {
+    const prisma = this._getPrisma(tx);
     const data = toStickerData(sticker);
     await prisma.sticker.upsert({
       where: { id: sticker.id },
@@ -121,25 +134,25 @@ export class PostgresStickerRepository extends IStickerRepository {
     return sticker;
   }
 
-  async update(sticker) {
-    return this.save(sticker);
+  async update(sticker, tx) {
+    return this.save(sticker, tx);
   }
 
-  async delete(id) {
-    await getPrismaClient().sticker.delete({ where: { id } });
+  async delete(id, tx) {
+    await this._getPrisma(tx).sticker.delete({ where: { id } });
     return true;
   }
 
-  async deleteByUserId(userId) {
-    const result = await getPrismaClient().sticker.deleteMany({ where: { userId } });
+  async deleteByUserId(userId, tx) {
+    const result = await this._getPrisma(tx).sticker.deleteMany({ where: { userId } });
     return result.count;
   }
 
-  async countByUserId(userId) {
-    return getPrismaClient().sticker.count({ where: { userId } });
+  async countByUserId(userId, tx) {
+    return this._getPrisma(tx).sticker.count({ where: { userId } });
   }
 
-  async countByPackageId(packageId) {
-    return getPrismaClient().sticker.count({ where: { packageId } });
+  async countByPackageId(packageId, tx) {
+    return this._getPrisma(tx).sticker.count({ where: { packageId } });
   }
 }

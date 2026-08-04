@@ -185,7 +185,8 @@ export async function createApp() {
 
   // --- Balance (HMAC + User JWT required) ---
   app.get('/api/v1/users/balance', requireHmac, requireUser, BalanceController.getBalance);
-  app.post('/api/v1/users/balance/spend', requireHmac, requireUser, BalanceController.spendBalance);
+  // T06: client-initiated spend removed. Spending only happens as a server-side
+  // authorized side effect of creating a generation job.
   app.get('/api/v1/users/balance/history', requireHmac, requireUser, BalanceController.getTransactionHistory);
   app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
 

@@ -1,4 +1,9 @@
 import { env } from '../../config/env.js';
+import {
+  PostgresUnitOfWork,
+  JsonUnitOfWork,
+  InMemoryUnitOfWork
+} from './unit-of-work.js';
 
 /**
  * Create repository instances for the configured PERSISTENCE_DRIVER.
@@ -23,7 +28,7 @@ export async function createRepositories() {
     const { PostgresGenerationJobRepository } = await import('./postgres/postgres-generation-job.repository.js');
     const { PostgresSessionRepository } = await import('./postgres/postgres-session.repository.js');
 
-    return {
+    const repositories = {
       user: new PostgresUserRepository(),
       balance: new PostgresBalanceRepository(),
       transaction: new PostgresTransactionRepository(),
@@ -33,6 +38,8 @@ export async function createRepositories() {
       generationJob: new PostgresGenerationJobRepository(),
       session: new PostgresSessionRepository()
     };
+    repositories.unitOfWork = new PostgresUnitOfWork(repositories);
+    return repositories;
   }
 
   // JSON remains available for development and rollback windows only.
@@ -45,7 +52,7 @@ export async function createRepositories() {
   const { JsonGenerationJobRepository } = await import('./json/json-generation-job.repository.js');
   const { JsonSessionRepository } = await import('./json/json-session.repository.js');
 
-  return {
+  const repositories = {
     user: new JsonUserRepository(env.DATA_DIR),
     balance: new JsonBalanceRepository(env.DATA_DIR),
     transaction: new JsonTransactionRepository(env.DATA_DIR),
@@ -55,4 +62,8 @@ export async function createRepositories() {
     generationJob: new JsonGenerationJobRepository(env.DATA_DIR),
     session: new JsonSessionRepository(env.DATA_DIR)
   };
+  repositories.unitOfWork = new JsonUnitOfWork(repositories);
+  return repositories;
 }
+
+export { PostgresUnitOfWork, JsonUnitOfWork, InMemoryUnitOfWork };

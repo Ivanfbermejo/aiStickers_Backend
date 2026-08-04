@@ -37,14 +37,27 @@ function toPrismaData(transaction) {
 }
 
 export class PostgresTransactionRepository extends ITransactionRepository {
-  async findById(id) {
-    const raw = await getPrismaClient().ledgerEntry.findUnique({ where: { id } });
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma(tx) {
+    return tx || this.prisma || getPrismaClient();
+  }
+
+  withPrisma(prismaClient) {
+    return new PostgresTransactionRepository(prismaClient);
+  }
+
+  async findById(id, tx) {
+    const raw = await this._getPrisma(tx).ledgerEntry.findUnique({ where: { id } });
     return toTransaction(raw);
   }
 
-  async findByUserId(userId, options = {}) {
+  async findByUserId(userId, options = {}, tx) {
     const { limit = 50, offset = 0 } = options;
-    const rows = await getPrismaClient().ledgerEntry.findMany({
+    const rows = await this._getPrisma(tx).ledgerEntry.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -53,15 +66,15 @@ export class PostgresTransactionRepository extends ITransactionRepository {
     return rows.map(toTransaction);
   }
 
-  async findByProviderTransactionId(providerTransactionId) {
-    const raw = await getPrismaClient().ledgerEntry.findUnique({
+  async findByProviderTransactionId(providerTransactionId, tx) {
+    const raw = await this._getPrisma(tx).ledgerEntry.findUnique({
       where: { idempotencyKey: providerTransactionId }
     });
     return toTransaction(raw);
   }
 
-  async save(transaction) {
-    const prisma = getPrismaClient();
+  async save(transaction, tx) {
+    const prisma = this._getPrisma(tx);
     const data = toPrismaData(transaction);
     await prisma.ledgerEntry.upsert({
       where: { id: transaction.id },
@@ -78,14 +91,14 @@ export class PostgresTransactionRepository extends ITransactionRepository {
     return transaction;
   }
 
-  async exists(providerTransactionId) {
-    const raw = await getPrismaClient().ledgerEntry.findUnique({
+  async exists(providerTransactionId, tx) {
+    const raw = await this._getPrisma(tx).ledgerEntry.findUnique({
       where: { idempotencyKey: providerTransactionId }
     });
     return raw !== null;
   }
 
-  async getHistory(userId, limit = 50, offset = 0) {
-    return this.findByUserId(userId, { limit, offset });
+  async getHistory(userId, limit = 50, offset = 0, tx) {
+    return this.findByUserId(userId, { limit, offset }, tx);
   }
 }
