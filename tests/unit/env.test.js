@@ -40,7 +40,7 @@ describe('buildConfig and validateEnv', () => {
 
   function setProductionEnv(extra = {}) {
     process.env.NODE_ENV = 'production';
-    process.env.PORT = '22024';
+    process.env.PORT = '2002';
     process.env.JWT_SECRET = 'production-jwt-secret-with-32-chars-long!!';
     process.env.CLIENT_SECRET = 'production-client-secret-32-chars-long!!';
     process.env.CLIENT_ID = 'ai-stickers-prod';

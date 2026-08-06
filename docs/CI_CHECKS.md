@@ -66,7 +66,7 @@ files:
 
 ```yaml
 NODE_ENV: test
-PORT: 22024
+PORT: 2002
 JWT_SECRET: test_jwt_secret_minimum_32_chars_long
 CLIENT_SECRET: test_client_secret_minimum_32_chars
 CLIENT_ID: ai-stickers-test

@@ -151,7 +151,7 @@ export function loadConfig(rawEnv = process.env) {
 
   const config = {
     NODE_ENV: nodeEnv,
-    PORT: parsePort(rawEnv.PORT, 22024),
+    PORT: parsePort(rawEnv.PORT, 2002),
     DATA_DIR: rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
 
     // Persistence: JSON files by default; PostgreSQL is mandatory in production

@@ -6,12 +6,12 @@ services:
       - .env.docker
     environment:
       NODE_ENV: development
-      PORT: "22024"
+      PORT: "2002"
       DATA_DIR: /app/data
       ASSET_STORAGE_DRIVER: local
       ASSET_STORAGE_LOCAL_BASE_DIR: /app/data
     ports:
-      - "22024:22024"
+      - "127.0.0.1:2002:2002"
     volumes:
       - aistickers_dev_data:/app/data
     depends_on:
@@ -22,7 +22,7 @@ services:
     cpus: "1.0"
     mem_limit: 1g
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:22024/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2002/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 15s

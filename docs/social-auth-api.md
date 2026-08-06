@@ -271,5 +271,5 @@ val headers = AuthCoreManager.getHeaders("POST", "/api/v1/payments/validate/goog
 ```bash
 # El endpoint requiere HMAC — usar la app Android para generar headers válidos.
 # Health check (sin HMAC):
-curl http://animatedsticker.com:22024/health
+curl http://127.0.0.1:2002/health
 ```

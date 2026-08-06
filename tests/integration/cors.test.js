@@ -6,7 +6,7 @@ const TEST_CLIENT_SECRET = 'production-client-secret-32-chars-long!!';
 
 function setProductionEnv() {
   process.env.NODE_ENV = 'production';
-  process.env.PORT = '22024';
+  process.env.PORT = '2002';
   process.env.JWT_SECRET = TEST_JWT_SECRET;
   process.env.CLIENT_SECRET = TEST_CLIENT_SECRET;
   process.env.CLIENT_ID = 'ai-stickers-prod';

@@ -6,7 +6,7 @@ export default defineConfig({
     hookTimeout: 30000,
     env: {
       NODE_ENV: 'test',
-      PORT: '22024',
+      PORT: '2002',
       JWT_SECRET: process.env.JWT_SECRET ?? 'test_jwt_secret_minimum_32_chars_long',
       JWT_ISSUER: 'aiStickers-test',
       JWT_AUDIENCE: 'aiStickers-backend-test',

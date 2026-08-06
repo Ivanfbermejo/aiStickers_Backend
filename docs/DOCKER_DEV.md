@@ -48,7 +48,7 @@ docker compose -f compose.dev.yml ps
 ## 4. Healthcheck
 
 ```bash
-curl --fail --silent http://127.0.0.1:22025/health
+curl --fail --silent http://127.0.0.1:2002/health
 ```
 
 Debe responder `2xx` con un JSON `{ "status": "ok", ... }`.
@@ -98,10 +98,10 @@ Esto detiene y elimina el contenedor, pero:
 - No afecta al proceso `npm start` original.
 - **No** borra el volumen `aistickers_dev_data` (no se usa `-v`).
 
-## 10. Subdominio temporal (Nginx/Apache) apuntando a 127.0.0.1:22025
+## 10. Subdominio temporal (Nginx/Apache) apuntando a 127.0.0.1:2002
 
 El backend firma las rutas con HMAC, por lo que el proxy **no debe añadir
-ningún prefijo de path** — debe ser un passthrough 1:1 al puerto `22025`.
+ningún prefijo de path** — debe ser un passthrough 1:1 al puerto `2002`.
 
 ### Nginx
 
@@ -111,7 +111,7 @@ server {
     server_name dev-aistickers.tu-dominio.com;
 
     location / {
-        proxy_pass http://127.0.0.1:22025;
+        proxy_pass http://127.0.0.1:2002;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -129,8 +129,8 @@ Luego añade TLS con tu método habitual (por ejemplo `certbot --nginx`).
     ServerName dev-aistickers.tu-dominio.com
 
     ProxyPreserveHost On
-    ProxyPass / http://127.0.0.1:22025/
-    ProxyPassReverse / http://127.0.0.1:22025/
+    ProxyPass / http://127.0.0.1:2002/
+    ProxyPassReverse / http://127.0.0.1:2002/
 </VirtualHost>
 ```
 

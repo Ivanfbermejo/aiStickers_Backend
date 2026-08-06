@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
-const PORT = process.env.PORT || 22024;
+const PORT = process.env.PORT || 2002;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const DATA_DIR = mkdtempSync(join(tmpdir(), 'aistickers-smoke-'));
 
