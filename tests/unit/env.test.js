@@ -54,6 +54,11 @@ describe('buildConfig and validateEnv', () => {
     process.env.CORS_ORIGINS = 'https://app.example.com';
     process.env.PERSISTENCE_DRIVER = 'postgres';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/aistickers';
+    process.env.ASSET_STORAGE_DRIVER = 's3';
+    process.env.ASSET_STORAGE_BUCKET = 'aistickers-private-assets';
+    process.env.ASSET_STORAGE_REGION = 'us-east-1';
+    process.env.ASSET_STORAGE_ACCESS_KEY_ID = 'prod-access-key';
+    process.env.ASSET_STORAGE_SECRET_ACCESS_KEY = 'prod-secret-key-min-8';
     Object.assign(process.env, extra);
   }
 
@@ -140,6 +145,18 @@ describe('buildConfig and validateEnv', () => {
     delete process.env.DATABASE_URL;
     const config = buildConfig();
     expect(() => validateEnv(config)).toThrow('DATABASE_URL');
+  });
+
+  it('production rejects local asset storage', () => {
+    setProductionEnv({ ASSET_STORAGE_DRIVER: 'local' });
+    const config = buildConfig();
+    expect(() => validateEnv(config)).toThrow('ASSET_STORAGE_DRIVER');
+  });
+
+  it('limits signed asset URLs to 15 minutes', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS = '901';
+    expect(() => buildConfig()).toThrow('ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS');
   });
 
   it('production rejects an invalid GOOGLE_PLAY_SERVICE_ACCOUNT JSON', () => {

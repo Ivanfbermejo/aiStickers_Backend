@@ -20,6 +20,12 @@ function setProductionEnv() {
   process.env.CORS_ORIGINS = 'https://allowed.example.com,https://app.example.com';
   process.env.PERSISTENCE_DRIVER = 'postgres';
   process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/aistickers';
+  process.env.ASSET_STORAGE_DRIVER = 's3';
+  process.env.ASSET_STORAGE_BUCKET = 'aistickers-private-assets';
+  process.env.ASSET_STORAGE_REGION = 'us-east-1';
+  process.env.ASSET_STORAGE_ACCESS_KEY_ID = 'prod-access-key';
+  process.env.ASSET_STORAGE_SECRET_ACCESS_KEY = 'prod-secret-key-min-8';
+  process.env.ASSET_STORAGE_ENDPOINT = 'http://localhost:9000';
 }
 
 describe('CORS in production', () => {

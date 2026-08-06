@@ -17,7 +17,7 @@ export class CreateGenerationJobUseCase {
    * @param {Object} input
    * @param {string} input.userId - User identifier
    * @param {string} input.type - Generation type: image_sticker | animated_sticker | img2vid
-   * @param {string} input.imageUrl - Input image URL or base64 data URI
+   * @param {Object} input.asset - Verified private input asset metadata
    * @param {string} input.prompt - Optional generation prompt
    * @param {string} input.styleId - Optional style identifier
    * @param {string} input.emoji - Optional emoji metadata
@@ -28,7 +28,7 @@ export class CreateGenerationJobUseCase {
   async execute({
     userId,
     type,
-    imageUrl,
+    asset,
     prompt,
     styleId,
     emoji,
@@ -40,8 +40,8 @@ export class CreateGenerationJobUseCase {
       throw new Error(`Invalid generation type: ${type}`);
     }
 
-    if (!imageUrl) {
-      throw new Error('imageUrl is required');
+    if (!asset?.key) {
+      throw new Error('asset with objectKey metadata is required');
     }
 
     const cost = 1;
@@ -68,7 +68,12 @@ export class CreateGenerationJobUseCase {
       packageId: packageId || null,
       stickerId: sticker.id,
       input: {
-        imageUrl,
+        objectKey: asset.key,
+        hash: asset.hash,
+        sizeBytes: asset.sizeBytes,
+        mimeType: asset.mimeType,
+        width: asset.width,
+        height: asset.height,
         prompt,
         styleId,
         emoji

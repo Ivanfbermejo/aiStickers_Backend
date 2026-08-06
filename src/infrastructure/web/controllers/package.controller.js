@@ -1,5 +1,33 @@
 import { container } from '../../../config/container.js';
 import { Package } from '../../../domain/entities/package.entity.js';
+import { env } from '../../../config/env.js';
+
+async function trayIconUrl(pkg, requesterId) {
+  if (pkg.trayIconObjectKey && pkg.userId === requesterId) {
+    return container.services.asset.getSignedUrl(pkg.trayIconObjectKey, requesterId);
+  }
+  return env.NODE_ENV === 'production' ? null : (pkg.trayIconUrl || null);
+}
+
+async function stickerUrls(sticker, requesterId, ownerId) {
+  const canRead = requesterId === ownerId;
+  return {
+    id: sticker.id,
+    name: sticker.name,
+    imageUrl: canRead && sticker.objectKey
+      ? await container.services.asset.getSignedUrl(sticker.objectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.imageUrl),
+    thumbnailUrl: canRead && sticker.objectKey
+      ? await container.services.asset.getSignedUrl(sticker.objectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.thumbnailUrl),
+    whatsappWebpUrl: canRead && sticker.whatsappObjectKey
+      ? await container.services.asset.getSignedUrl(sticker.whatsappObjectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.whatsappWebpUrl),
+    exportStatus: sticker.exportStatus,
+    exportError: sticker.exportError,
+    status: sticker.status
+  };
+}
 
 /**
  * Package Controller
@@ -26,7 +54,7 @@ export class PackageController {
       return res.json({
         success: true,
         count: packages.length,
-        packages: packages.map(p => ({
+        packages: await Promise.all(packages.map(async p => ({
           id: p.id,
           name: p.name,
           author: p.author,
@@ -37,13 +65,13 @@ export class PackageController {
           tags: p.tags,
           isPublic: p.isPublic,
           packType: p.packType,
-          trayIconUrl: p.trayIconUrl,
+          trayIconUrl: await trayIconUrl(p, userId),
           whatsappReady: p.whatsappReady,
           exportStatus: p.exportStatus,
           exportError: p.exportError,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt
-        }))
+        })))
       });
 
     } catch (error) {
@@ -86,7 +114,7 @@ export class PackageController {
           category: p.category,
           tags: p.tags,
           packType: p.packType,
-          trayIconUrl: p.trayIconUrl,
+          trayIconUrl: env.NODE_ENV === 'production' ? null : p.trayIconUrl,
           whatsappReady: p.whatsappReady,
           exportStatus: p.exportStatus,
           createdAt: p.createdAt
@@ -151,22 +179,13 @@ export class PackageController {
           tags: pkg.tags,
           isPublic: pkg.isPublic,
           packType: pkg.packType,
-          trayIconUrl: pkg.trayIconUrl,
+          trayIconUrl: await trayIconUrl(pkg, userId),
           whatsappReady: pkg.whatsappReady,
           exportStatus: pkg.exportStatus,
           exportError: pkg.exportError,
           createdAt: pkg.createdAt,
           updatedAt: pkg.updatedAt,
-          stickers: stickers.map(s => ({
-            id: s.id,
-            name: s.name,
-            imageUrl: s.imageUrl,
-            thumbnailUrl: s.thumbnailUrl,
-            whatsappWebpUrl: s.whatsappWebpUrl,
-            exportStatus: s.exportStatus,
-            exportError: s.exportError,
-            status: s.status
-          }))
+          stickers: await Promise.all(stickers.map(s => stickerUrls(s, userId, pkg.userId)))
         }
       });
 
@@ -311,7 +330,7 @@ export class PackageController {
           category: pkg.category,
           isPublic: pkg.isPublic,
           packType: pkg.packType,
-          trayIconUrl: pkg.trayIconUrl,
+          trayIconUrl: await trayIconUrl(pkg, userId),
           whatsappReady: pkg.whatsappReady,
           exportStatus: pkg.exportStatus,
           exportError: pkg.exportError,
@@ -360,6 +379,9 @@ export class PackageController {
         await container.repositories.sticker.update(sticker);
       }
 
+      if (pkg.trayIconObjectKey) {
+        await container.services.asset.deleteIfOwned(pkg.trayIconObjectKey, userId);
+      }
       await container.repositories.package.delete(id);
 
       return res.json({

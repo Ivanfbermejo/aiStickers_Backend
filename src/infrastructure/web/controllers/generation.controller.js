@@ -10,6 +10,14 @@ function isAllowedExternalImageUrl(urlString) {
   return env.ENABLE_EXTERNAL_IMAGE_URLS;
 }
 
+async function presentPrivateResult(result, userId) {
+  if (!result?.objectKey) return env.NODE_ENV === 'production' ? undefined : result;
+  return {
+    ...result,
+    url: await container.services.asset.getSignedUrl(result.objectKey, userId)
+  };
+}
+
 /**
  * Generation Controller
  * Handles async AI generation endpoints
@@ -45,12 +53,18 @@ export class GenerationController {
         });
       }
 
+      let inputAsset;
       if (imageUrl) {
         try {
           await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+          inputAsset = await container.services.asset.ingestClientAsset({
+            reference: imageUrl,
+            ownerId: userId,
+            allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST
+          });
         } catch (err) {
           return res.status(400).json({
-            error: 'Invalid image URL',
+            error: 'Invalid image asset',
             message: err.message
           });
         }
@@ -59,7 +73,7 @@ export class GenerationController {
       const result = await container.useCases.createGenerationJob.execute({
         userId,
         type,
-        imageUrl,
+        asset: inputAsset,
         prompt,
         styleId,
         emoji,
@@ -122,7 +136,7 @@ export class GenerationController {
           stickerId: job.stickerId,
           type: job.type,
           errorMessage: job.errorMessage,
-          result: job.result
+          result: await presentPrivateResult(job.result, userId)
         }
       };
 
@@ -131,8 +145,12 @@ export class GenerationController {
           id: sticker.id,
           packageId: sticker.packageId,
           name: sticker.name,
-          imageUrl: sticker.imageUrl,
-          thumbnailUrl: sticker.thumbnailUrl,
+          imageUrl: sticker.objectKey
+            ? await container.services.asset.getSignedUrl(sticker.objectKey, userId)
+            : (env.NODE_ENV === 'production' ? null : sticker.imageUrl),
+          thumbnailUrl: sticker.objectKey
+            ? await container.services.asset.getSignedUrl(sticker.objectKey, userId)
+            : (env.NODE_ENV === 'production' ? null : sticker.thumbnailUrl),
           status: sticker.status
         };
       }
@@ -166,7 +184,7 @@ export class GenerationController {
       return res.json({
         success: true,
         count: result.count,
-        jobs: result.jobs.map(job => ({
+        jobs: await Promise.all(result.jobs.map(async job => ({
           id: job.id,
           status: job.status,
           currentStep: job.currentStep,
@@ -174,10 +192,10 @@ export class GenerationController {
           stickerId: job.stickerId,
           type: job.type,
           errorMessage: job.errorMessage,
-          result: job.result,
+          result: await presentPrivateResult(job.result, userId),
           createdAt: job.createdAt,
           updatedAt: job.updatedAt
-        }))
+        })))
       });
     } catch (error) {
       console.error('Generation getUserJobs error:', error);

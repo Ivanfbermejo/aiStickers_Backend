@@ -101,6 +101,7 @@ function parseHostAllowlist(value) {
 }
 
 const PERSISTENCE_DRIVERS = ['json', 'postgres'];
+const ASSET_STORAGE_DRIVERS = ['local', 's3'];
 
 /**
  * PERSISTENCE_DRIVER selects the repository backend. JSON files remain the
@@ -116,6 +117,28 @@ function parsePersistenceDriver(value) {
     throw new Error(`PERSISTENCE_DRIVER must be one of: ${PERSISTENCE_DRIVERS.join(', ')}`);
   }
   return driver;
+}
+
+function parseAssetStorageDriver(value, isProduction) {
+  if (!value || value.trim() === '') {
+    return isProduction ? undefined : 'local';
+  }
+  const driver = value.trim().toLowerCase();
+  if (!ASSET_STORAGE_DRIVERS.includes(driver)) {
+    throw new Error(`ASSET_STORAGE_DRIVER must be one of: ${ASSET_STORAGE_DRIVERS.join(', ')}`);
+  }
+  return driver;
+}
+
+function parsePositiveInt(value, defaultValue, name, maxValue = Number.MAX_SAFE_INTEGER) {
+  if (!value || value.trim() === '') {
+    return defaultValue;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > maxValue) {
+    throw new Error(`${name} must be an integer between 1 and ${maxValue}`);
+  }
+  return n;
 }
 
 /**
@@ -135,6 +158,24 @@ export function loadConfig(rawEnv = process.env) {
     // (see validateEnv). Repositories still read/write JSON until T05B.
     PERSISTENCE_DRIVER: parsePersistenceDriver(rawEnv.PERSISTENCE_DRIVER),
     DATABASE_URL: rawEnv.DATABASE_URL,
+
+    // Private assets use S3-compatible storage in production. Local storage is
+    // intentionally restricted to development and tests.
+    ASSET_STORAGE_DRIVER: parseAssetStorageDriver(rawEnv.ASSET_STORAGE_DRIVER, isProduction),
+    ASSET_STORAGE_BUCKET: rawEnv.ASSET_STORAGE_BUCKET,
+    ASSET_STORAGE_PREFIX: rawEnv.ASSET_STORAGE_PREFIX || '',
+    ASSET_STORAGE_REGION: rawEnv.ASSET_STORAGE_REGION || 'us-east-1',
+    ASSET_STORAGE_ENDPOINT: rawEnv.ASSET_STORAGE_ENDPOINT,
+    ASSET_STORAGE_ACCESS_KEY_ID: rawEnv.ASSET_STORAGE_ACCESS_KEY_ID,
+    ASSET_STORAGE_SECRET_ACCESS_KEY: rawEnv.ASSET_STORAGE_SECRET_ACCESS_KEY,
+    ASSET_STORAGE_FORCE_PATH_STYLE: (rawEnv.ASSET_STORAGE_FORCE_PATH_STYLE || '').trim().toLowerCase() === 'true',
+    ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS: parsePositiveInt(
+      rawEnv.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS,
+      300,
+      'ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS',
+      900
+    ),
+    ASSET_STORAGE_LOCAL_BASE_DIR: rawEnv.ASSET_STORAGE_LOCAL_BASE_DIR || rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
 
     JWT_SECRET: rawEnv.JWT_SECRET,
     JWT_ISSUER: rawEnv.JWT_ISSUER || 'aiStickers',
@@ -221,6 +262,19 @@ export function validateEnv(config) {
     }
   }
 
+  if (config.PERSISTENCE_DRIVER !== 'postgres') {
+    throw new Error("PERSISTENCE_DRIVER must be 'postgres' in production");
+  }
+  requireString('DATABASE_URL', 1);
+
+  if (config.ASSET_STORAGE_DRIVER !== 's3') {
+    throw new Error("ASSET_STORAGE_DRIVER must be 's3' in production");
+  }
+  requireString('ASSET_STORAGE_BUCKET', 1);
+  requireString('ASSET_STORAGE_REGION', 1);
+  requireString('ASSET_STORAGE_ACCESS_KEY_ID', 1);
+  requireString('ASSET_STORAGE_SECRET_ACCESS_KEY', 8);
+
   requireString('JWT_SECRET', 32);
   requireString('CLIENT_SECRET', 32);
   requireString('CLIENT_ID', 1);
@@ -231,11 +285,6 @@ export function validateEnv(config) {
   requireString('REPLICATE_MODEL', 1);
   requireString('REPLICATE_IMG2VID_MODEL', 1);
   requireString('GOOGLE_PLAY_SERVICE_ACCOUNT', 1);
-
-  if (config.PERSISTENCE_DRIVER !== 'postgres') {
-    throw new Error("PERSISTENCE_DRIVER must be 'postgres' in production");
-  }
-  requireString('DATABASE_URL', 1);
 
   try {
     JSON.parse(config.GOOGLE_PLAY_SERVICE_ACCOUNT);

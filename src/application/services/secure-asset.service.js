@@ -119,6 +119,7 @@ export function isInternalUrl(urlString) {
   if (typeof urlString !== 'string') return false;
   if (urlString.startsWith('data:')) return true;
   if (urlString.startsWith('/uploads/')) return true;
+  if (urlString.startsWith('/api/v1/assets/')) return true;
   return false;
 }
 

@@ -11,6 +11,34 @@ function isAllowedExternalImageUrl(urlString) {
   return env.ENABLE_EXTERNAL_IMAGE_URLS;
 }
 
+async function privateUrl(objectKey, legacyUrl, ownerId) {
+  if (objectKey) return container.services.asset.getSignedUrl(objectKey, ownerId);
+  return env.NODE_ENV === 'production' ? null : (legacyUrl || null);
+}
+
+async function serializeSticker(sticker, ownerId) {
+  return {
+    id: sticker.id,
+    packageId: sticker.packageId,
+    name: sticker.name,
+    imageUrl: await privateUrl(sticker.objectKey, sticker.imageUrl, ownerId),
+    thumbnailUrl: await privateUrl(sticker.objectKey, sticker.thumbnailUrl, ownerId),
+    whatsappWebpUrl: await privateUrl(sticker.whatsappObjectKey, sticker.whatsappWebpUrl, ownerId),
+    width: sticker.width,
+    height: sticker.height,
+    durationMs: sticker.durationMs,
+    sizeBytes: sticker.sizeBytes,
+    mimeType: sticker.mimeType,
+    exportStatus: sticker.exportStatus,
+    exportError: sticker.exportError,
+    status: sticker.status,
+    prompt: sticker.prompt,
+    cost: sticker.cost,
+    createdAt: sticker.createdAt,
+    updatedAt: sticker.updatedAt
+  };
+}
+
 /**
  * Sticker Controller
  * Handles CRUD operations for stickers
@@ -36,26 +64,7 @@ export class StickerController {
       return res.json({
         success: true,
         count: stickers.length,
-        stickers: stickers.map(s => ({
-          id: s.id,
-          packageId: s.packageId,
-          name: s.name,
-          imageUrl: s.imageUrl,
-          thumbnailUrl: s.thumbnailUrl,
-          whatsappWebpUrl: s.whatsappWebpUrl,
-          width: s.width,
-          height: s.height,
-          durationMs: s.durationMs,
-          sizeBytes: s.sizeBytes,
-          mimeType: s.mimeType,
-          exportStatus: s.exportStatus,
-          exportError: s.exportError,
-          status: s.status,
-          prompt: s.prompt,
-          cost: s.cost,
-          createdAt: s.createdAt,
-          updatedAt: s.updatedAt
-        }))
+        stickers: await Promise.all(stickers.map(s => serializeSticker(s, userId)))
       });
 
     } catch (error) {
@@ -103,22 +112,7 @@ export class StickerController {
           author: pkg.author,
           icon: pkg.icon
         },
-        stickers: stickers.map(s => ({
-          id: s.id,
-          name: s.name,
-          imageUrl: s.imageUrl,
-          thumbnailUrl: s.thumbnailUrl,
-          whatsappWebpUrl: s.whatsappWebpUrl,
-          width: s.width,
-          height: s.height,
-          durationMs: s.durationMs,
-          sizeBytes: s.sizeBytes,
-          mimeType: s.mimeType,
-          exportStatus: s.exportStatus,
-          exportError: s.exportError,
-          status: s.status,
-          createdAt: s.createdAt
-        }))
+        stickers: await Promise.all(stickers.map(s => serializeSticker(s, userId)))
       });
 
     } catch (error) {
@@ -157,27 +151,7 @@ export class StickerController {
 
       return res.json({
         success: true,
-        sticker: {
-          id: sticker.id,
-          packageId: sticker.packageId,
-          name: sticker.name,
-          imageUrl: sticker.imageUrl,
-          thumbnailUrl: sticker.thumbnailUrl,
-          whatsappWebpUrl: sticker.whatsappWebpUrl,
-          width: sticker.width,
-          height: sticker.height,
-          durationMs: sticker.durationMs,
-          sizeBytes: sticker.sizeBytes,
-          mimeType: sticker.mimeType,
-          exportStatus: sticker.exportStatus,
-          exportError: sticker.exportError,
-          replicateId: sticker.replicateId,
-          status: sticker.status,
-          prompt: sticker.prompt,
-          cost: sticker.cost,
-          createdAt: sticker.createdAt,
-          updatedAt: sticker.updatedAt
-        }
+        sticker: { ...(await serializeSticker(sticker, userId)), replicateId: sticker.replicateId }
       });
 
     } catch (error) {
@@ -228,6 +202,17 @@ export class StickerController {
         });
       }
 
+      let asset;
+      try {
+        asset = await container.services.asset.ingestClientAsset({
+          reference: imageUrl,
+          ownerId: userId,
+          allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST
+        });
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid image asset', message: err.message });
+      }
+
       // If packageId provided, verify it belongs to user
       if (packageId) {
         const pkg = await container.repositories.package.findById(packageId);
@@ -244,8 +229,18 @@ export class StickerController {
         userId,
         packageId: packageId || null,
         name: name || 'New Sticker',
-        imageUrl,
-        thumbnailUrl: thumbnailUrl || imageUrl,
+        imageUrl: null,
+        thumbnailUrl: null,
+        objectKey: asset.key,
+        objectHash: asset.hash,
+        objectSize: asset.sizeBytes,
+        objectMime: asset.mimeType,
+        objectWidth: asset.width,
+        objectHeight: asset.height,
+        width: asset.width,
+        height: asset.height,
+        sizeBytes: asset.sizeBytes,
+        mimeType: asset.mimeType,
         status: 'done',
         prompt: prompt || '',
         cost: 0 // Manual creation doesn't cost
@@ -265,17 +260,7 @@ export class StickerController {
       return res.status(201).json({
         success: true,
         message: 'Sticker created successfully',
-        sticker: {
-          id: sticker.id,
-          packageId: sticker.packageId,
-          name: sticker.name,
-          imageUrl: sticker.imageUrl,
-          thumbnailUrl: sticker.thumbnailUrl,
-          whatsappWebpUrl: sticker.whatsappWebpUrl,
-          exportStatus: sticker.exportStatus,
-          status: sticker.status,
-          createdAt: sticker.createdAt
-        }
+        sticker: await serializeSticker(sticker, userId)
       });
 
     } catch (error) {
@@ -353,17 +338,7 @@ export class StickerController {
       return res.json({
         success: true,
         message: 'Sticker updated successfully',
-        sticker: {
-          id: sticker.id,
-          packageId: sticker.packageId,
-          name: sticker.name,
-          imageUrl: sticker.imageUrl,
-          thumbnailUrl: sticker.thumbnailUrl,
-          whatsappWebpUrl: sticker.whatsappWebpUrl,
-          exportStatus: sticker.exportStatus,
-          exportError: sticker.exportError,
-          updatedAt: sticker.updatedAt
-        }
+        sticker: await serializeSticker(sticker, userId)
       });
 
     } catch (error) {
@@ -409,6 +384,9 @@ export class StickerController {
         }
       }
 
+      for (const key of [sticker.objectKey, sticker.whatsappObjectKey].filter(Boolean)) {
+        await container.services.asset.deleteIfOwned(key, userId);
+      }
       await container.repositories.sticker.delete(id);
 
       return res.json({

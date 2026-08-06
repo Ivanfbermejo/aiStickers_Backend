@@ -1,11 +1,7 @@
 import fetch from 'node-fetch';
 import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
-import {
-  isInternalUrl,
-  validateImageBuffer,
-  validateClientImageReference
-} from '../../../application/services/secure-asset.service.js';
+import { isInternalUrl, validateClientImageReference } from '../../../application/services/secure-asset.service.js';
 
 function isAllowedExternalImageUrl(urlString) {
   if (isInternalUrl(urlString)) return true;
@@ -42,7 +38,7 @@ export class AiController {
         });
       }
 
-      let imageUrl = req.body?.imageUrl;
+      const imageUrl = req.body?.imageUrl;
 
       if (imageUrl && !isAllowedExternalImageUrl(imageUrl)) {
         return res.status(400).json({
@@ -51,18 +47,7 @@ export class AiController {
         });
       }
 
-      if (req.file) {
-        try {
-          await validateImageBuffer(req.file.buffer);
-        } catch (err) {
-          return res.status(400).json({
-            error: 'Invalid uploaded image',
-            message: err.message
-          });
-        }
-        const b64 = req.file.buffer.toString('base64');
-        imageUrl = `data:${req.file.mimetype};base64,${b64}`;
-      } else {
+      if (!req.file) {
         try {
           await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
         } catch (err) {
@@ -73,12 +58,28 @@ export class AiController {
         }
       }
 
+      let inputAsset;
+      try {
+        inputAsset = await container.services.asset.ingestClientAsset({
+          reference: imageUrl,
+          buffer: req.file?.buffer,
+          declaredMimeType: req.file?.mimetype,
+          ownerId: userId,
+          allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST
+        });
+      } catch (err) {
+        return res.status(400).json({
+          error: 'Invalid uploaded image',
+          message: err.message
+        });
+      }
+
       const finalPrompt = (prompt?.trim()) || 'clean sticker with white border, high contrast, professional quality, preserving exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Keep the face perfectly recognizable and faithful to the original person.';
 
       const result = await container.useCases.createGenerationJob.execute({
         userId,
         type: 'image_sticker',
-        imageUrl,
+        asset: inputAsset,
         prompt: finalPrompt,
         packageId
       });
@@ -140,10 +141,21 @@ export class AiController {
         });
       }
 
+      let inputAsset;
+      try {
+        inputAsset = await container.services.asset.ingestClientAsset({
+          reference: imageUrl,
+          ownerId: userId,
+          allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST
+        });
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid image asset', message: err.message });
+      }
+
       const result = await container.useCases.createGenerationJob.execute({
         userId,
         type: 'img2vid',
-        imageUrl,
+        asset: inputAsset,
         prompt,
         input: {
           duration,
@@ -188,9 +200,10 @@ export class AiController {
       return res.json({
         success: true,
         status: prediction.status,
-        output: prediction.output,
         error: prediction.error,
-        urls: prediction.urls
+        message: prediction.status === 'succeeded'
+          ? 'Result is being copied to private storage; poll the generation job endpoint.'
+          : undefined
       });
 
     } catch (error) {

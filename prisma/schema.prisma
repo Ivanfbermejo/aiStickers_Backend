@@ -186,24 +186,30 @@ enum ExportStatus {
 }
 
 model Package {
-  id            String       @id @default(uuid())
-  userId        String
-  name          String
-  author        String?
-  icon          String?
-  description   String?
-  isPublic      Boolean      @default(false)
-  stickerCount  Int          @default(0)
-  category      String?
-  tags          String[]     @default([])
-  platform      String?
-  packType      PackType     @default(STATIC)
-  trayIconUrl   String?
-  exportStatus  ExportStatus @default(PENDING)
-  whatsappReady Boolean      @default(false)
-  exportError   String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                   String       @id @default(uuid())
+  userId               String
+  name                 String
+  author               String?
+  icon                 String?
+  description          String?
+  isPublic             Boolean      @default(false)
+  stickerCount         Int          @default(0)
+  category             String?
+  tags                 String[]     @default([])
+  platform             String?
+  packType             PackType     @default(STATIC)
+  trayIconUrl          String?
+  trayIconObjectKey    String?
+  trayIconObjectHash   String?
+  trayIconObjectSize   Int?
+  trayIconObjectMime   String?
+  trayIconObjectWidth  Int?
+  trayIconObjectHeight Int?
+  exportStatus         ExportStatus @default(PENDING)
+  whatsappReady        Boolean      @default(false)
+  exportError          String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   stickers Sticker[]
@@ -222,31 +228,42 @@ enum StickerStatus {
 }
 
 model Sticker {
-  id              String        @id @default(uuid())
-  userId          String
-  packageId       String?
-  name            String?
-  imageUrl        String?
-  thumbnailUrl    String?
-  webpUrl         String?
-  animatedWebpUrl String?
-  whatsappWebpUrl String?
-  replicateId     String?
-  // Prepared for object-storage cutover; unused until repositories move off JSON.
-  objectKey       String?
-  status          StickerStatus @default(PENDING)
-  prompt          String?
-  cost            Int           @default(1)
-  width           Int?
-  height          Int?
-  durationMs      Int?
-  sizeBytes       Int?
-  mimeType        String?
-  exportStatus    ExportStatus  @default(PENDING)
-  exportError     String?
-  errorMessage    String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                   String        @id @default(uuid())
+  userId               String
+  packageId            String?
+  name                 String?
+  imageUrl             String?
+  thumbnailUrl         String?
+  webpUrl              String?
+  animatedWebpUrl      String?
+  whatsappWebpUrl      String?
+  replicateId          String?
+  // Private object-storage reference and validation metadata.
+  objectKey            String?
+  objectHash           String?
+  objectSize           Int?
+  objectMime           String?
+  objectWidth          Int?
+  objectHeight         Int?
+  whatsappObjectKey    String?
+  whatsappObjectHash   String?
+  whatsappObjectSize   Int?
+  whatsappObjectMime   String?
+  whatsappObjectWidth  Int?
+  whatsappObjectHeight Int?
+  status               StickerStatus @default(PENDING)
+  prompt               String?
+  cost                 Int           @default(1)
+  width                Int?
+  height               Int?
+  durationMs           Int?
+  sizeBytes            Int?
+  mimeType             String?
+  exportStatus         ExportStatus  @default(PENDING)
+  exportError          String?
+  errorMessage         String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   package        Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)

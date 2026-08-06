@@ -8,6 +8,8 @@ services:
       NODE_ENV: development
       PORT: "22024"
       DATA_DIR: /app/data
+      ASSET_STORAGE_DRIVER: local
+      ASSET_STORAGE_LOCAL_BASE_DIR: /app/data
     ports:
       - "22024:22024"
     volumes:
@@ -62,8 +64,46 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Optional S3-compatible integration environment for T07. Credentials are
+  # intentionally local dummy values and must never be reused in production.
+  minio:
+    image: minio/minio:RELEASE.2024-07-29T22-14-43Z
+    profiles: ["object-storage"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - aistickers_dev_minio:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-07-26T13-08-44Z
+    profiles: ["object-storage"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+        mc mb --ignore-existing local/aistickers-private-assets &&
+        mc anonymous set none local/aistickers-private-assets
+
 volumes:
   aistickers_dev_data:
     name: aistickers_dev_data
   aistickers_dev_db:
     name: aistickers_dev_db
+  aistickers_dev_minio:
+    name: aistickers_dev_minio

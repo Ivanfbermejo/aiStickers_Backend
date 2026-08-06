@@ -1,4 +1,5 @@
 import { createRepositories } from '../infrastructure/persistence/factory.js';
+import { createAssetStorage } from '../application/storage/asset-storage.factory.js';
 
 import { JwtService } from '../infrastructure/auth/jwt.service.js';
 import { GoogleAuthService } from '../infrastructure/auth/google-auth.service.js';
@@ -7,6 +8,7 @@ import { FraudDetectionService } from '../infrastructure/security/fraud-detectio
 import { PlanService } from '../application/services/plan.service.js';
 import { CostService } from '../application/services/cost.service.js';
 import { SessionService } from '../application/services/session.service.js';
+import { AssetService } from '../application/services/asset.service.js';
 
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
 import { ReplicateAnimationProvider } from '../infrastructure/ai/replicate-animation.provider.js';
@@ -44,6 +46,16 @@ export class Container {
     
     // Repositories (Infrastructure)
     this.repositories = await createRepositories();
+
+    // Private object storage for all user assets.
+    this.services.assetStorage = createAssetStorage();
+    this.services.asset = new AssetService({
+      storage: this.services.assetStorage,
+      jwtSecret: env.JWT_SECRET,
+      jwtIssuer: env.JWT_ISSUER,
+      jwtAudience: env.JWT_AUDIENCE,
+      signedUrlExpirySeconds: env.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS
+    });
 
     // Services (Infrastructure)
     this.services.jwt = new JwtService();
@@ -120,6 +132,7 @@ export class Container {
       stickerRepository: this.repositories.sticker,
       imageProvider: this.services.imageProvider,
       animationProvider: this.services.animationProvider,
+      assetService: this.services.asset,
       refundBalanceUseCase: this.useCases.refundBalance,
       intervalMs: 5000
     });

@@ -8,13 +8,18 @@ export class GenerationJobWorker {
     stickerRepository,
     imageProvider,
     animationProvider,
+    assetService,
     refundBalanceUseCase,
     intervalMs = 5000
   }) {
+    if (!assetService) {
+      throw new Error('GenerationJobWorker requires private asset storage');
+    }
     this.generationJobRepository = generationJobRepository;
     this.stickerRepository = stickerRepository;
     this.imageProvider = imageProvider;
     this.animationProvider = animationProvider;
+    this.assetService = assetService;
     this.refundBalanceUseCase = refundBalanceUseCase;
     this.intervalMs = intervalMs;
     this.timer = null;
@@ -53,15 +58,24 @@ export class GenerationJobWorker {
     await this.generationJobRepository.update(job);
 
     try {
+      const providerInput = { ...job.input };
+      if (providerInput.objectKey) {
+        providerInput.imageUrl = await this.assetService.getSignedUrl(
+          providerInput.objectKey,
+          job.userId
+        );
+        delete providerInput.objectKey;
+      }
+
       let result;
       if (job.type === 'image_sticker') {
         job.updateStep('generating_image', 30);
         await this.generationJobRepository.update(job);
-        result = await this.imageProvider.generate(job.input);
+        result = await this.imageProvider.generate(providerInput);
       } else if (job.type === 'animated_sticker' || job.type === 'img2vid') {
         job.updateStep('generating_video', 30);
         await this.generationJobRepository.update(job);
-        result = await this.animationProvider.animate(job.input);
+        result = await this.animationProvider.animate(providerInput);
       } else {
         throw new Error(`Unsupported job type: ${job.type}`);
       }
@@ -69,13 +83,38 @@ export class GenerationJobWorker {
       job.updateStep('saving_result', 90);
       await this.generationJobRepository.update(job);
 
-      job.markCompleted(result);
-      await this.generationJobRepository.update(job);
-
       const sticker = await this.stickerRepository.findById(job.stickerId);
-      if (sticker) {
-        sticker.markAsDone(result.imageUrl, result.thumbnailUrl || result.imageUrl);
+      if (!sticker) {
+        throw new Error(`Sticker ${job.stickerId} not found for generation job`);
+      }
+
+      const assetUrl = result.videoUrl || result.imageUrl;
+      try {
+        const asset = await this.assetService.copyExternalToStorage({
+          url: assetUrl,
+          ownerId: job.userId,
+          idempotencyKey: `generation-result:${job.id}`
+        });
+        sticker.markAsStoredAsset(asset);
         await this.stickerRepository.update(sticker);
+
+        job.markCompleted({
+          objectKey: asset.key,
+          hash: asset.hash,
+          sizeBytes: asset.sizeBytes,
+          mimeType: asset.mimeType,
+          width: asset.width,
+          height: asset.height,
+          providerPredictionId: result.providerPredictionId
+        });
+        await this.generationJobRepository.update(job);
+      } catch (ingestError) {
+        console.error(`[GenerationJobWorker] Failed to ingest result for job ${job.id}:`, ingestError);
+        job.markFailed('Failed to store generated asset securely');
+        await this.generationJobRepository.update(job);
+        sticker.markAsError('Failed to store generated asset securely');
+        await this.stickerRepository.update(sticker);
+        throw ingestError;
       }
 
       console.log(`[GenerationJobWorker] Job ${job.id} completed`);

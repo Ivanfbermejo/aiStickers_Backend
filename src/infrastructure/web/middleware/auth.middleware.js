@@ -114,9 +114,35 @@ export class AuthMiddleware {
   requireUser() {
     return (req, res, next) => this.verifyUserToken(req, res, next);
   }
+
+  /**
+   * Attach user info if a valid user JWT is provided, otherwise continue
+   * without authentication. Used by asset endpoints that also accept signed
+   * tokens in the query string.
+   */
+  optionalUser() {
+    return (req, res, next) => {
+      const authHeader = req.headers.authorization || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return next();
+      }
+
+      try {
+        const token = authHeader.substring(7);
+        const decoded = this.jwtService.verify(token);
+        if (decoded.type !== 'app' && decoded.sub && decoded.sub !== '' && decoded.sub !== 'null') {
+          req.user = decoded;
+        }
+      } catch {
+        // Ignore invalid bearer; signed token may still be provided.
+      }
+      next();
+    };
+  }
 }
 
 // Singleton instance
 export const authMiddleware = new AuthMiddleware();
 export const requireAuth = authMiddleware.requireAuth();
 export const requireUser = authMiddleware.requireUser();
+export const optionalUser = authMiddleware.optionalUser();

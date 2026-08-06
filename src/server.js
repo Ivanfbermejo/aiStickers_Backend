@@ -13,7 +13,7 @@ import { pingDatabase, disconnectPrisma } from './infrastructure/persistence/pri
 
 // Middleware
 import { requireHmac } from './infrastructure/web/middleware/hmac.middleware.js';
-import { requireAuth, requireUser } from './infrastructure/web/middleware/auth.middleware.js';
+import { requireAuth, requireUser, optionalUser } from './infrastructure/web/middleware/auth.middleware.js';
 
 // Controllers
 import { AuthController } from './infrastructure/web/controllers/auth.controller.js';
@@ -29,6 +29,7 @@ import { PackageController } from './infrastructure/web/controllers/package.cont
 import { StyleController } from './infrastructure/web/controllers/style.controller.js';
 import { TelegramController } from './infrastructure/web/controllers/telegram.controller.js';
 import { WhatsAppStickerExportController } from './infrastructure/web/controllers/whatsapp-sticker-export.controller.js';
+import { AssetController } from './infrastructure/web/controllers/asset.controller.js';
 
 /**
  * Configure the Express application without starting the HTTP server or the
@@ -96,8 +97,11 @@ export async function createApp() {
     }
   });
 
-  // Serve uploaded files statically
-  app.use('/uploads', express.static(uploadsDir));
+  // Serve uploaded files statically only in development/test. Production must
+  // use private object storage and signed URLs.
+  if (env.NODE_ENV !== 'production') {
+    app.use('/uploads', express.static(uploadsDir));
+  }
 
   // JSON parsing with raw body capture for HMAC (matches clientSign.middleware.js)
   // NOTE: This only applies to JSON requests, multipart is handled separately
@@ -255,6 +259,9 @@ export async function createApp() {
     app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportPackage);
     app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getPackageExportStatus);
   }
+
+  // --- Private Assets (User JWT or signed token) ---
+  app.get('/api/v1/assets/*', optionalUser, AssetController.getAsset);
 
   // --- Error Handling ---
   app.use((err, req, res, next) => {

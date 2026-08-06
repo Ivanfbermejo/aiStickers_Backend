@@ -33,7 +33,7 @@ export const WhatsAppStickerExportController = {
         return res.status(404).json({ error: 'Sticker not found' });
       }
 
-      if (!sticker.imageUrl) {
+      if (!sticker.objectKey && !sticker.imageUrl) {
         return res.status(400).json({ error: 'Sticker has no image to export' });
       }
 
@@ -41,7 +41,12 @@ export const WhatsAppStickerExportController = {
       await container.repositories.sticker.update(sticker);
 
       try {
-        const result = await WhatsAppService.exportSticker(sticker.imageUrl);
+        const result = await WhatsAppService.exportSticker(
+          sticker.objectKey ? { objectKey: sticker.objectKey } : sticker.imageUrl,
+          container.services.asset,
+          userId,
+          `whatsapp-sticker:${sticker.id}:${sticker.objectHash || 'legacy'}`
+        );
         sticker.markExportReady(result);
         await container.repositories.sticker.update(sticker);
 
@@ -49,7 +54,7 @@ export const WhatsAppStickerExportController = {
           success: true,
           sticker: {
             id: sticker.id,
-            whatsappWebpUrl: sticker.whatsappWebpUrl,
+            whatsappWebpUrl: result.whatsappWebpUrl,
             width: sticker.width,
             height: sticker.height,
             durationMs: sticker.durationMs,
@@ -87,15 +92,21 @@ export const WhatsAppStickerExportController = {
       }
 
       let validation = null;
-      if (sticker.whatsappWebpUrl) {
-        validation = await WhatsAppService.validateSticker(sticker.whatsappWebpUrl);
+      if (sticker.whatsappObjectKey) {
+        validation = await WhatsAppService.validateSticker(
+          sticker.whatsappObjectKey,
+          container.services.asset,
+          userId
+        );
       }
 
       return res.status(200).json({
         success: true,
         sticker: {
           id: sticker.id,
-          whatsappWebpUrl: sticker.whatsappWebpUrl,
+          whatsappWebpUrl: sticker.whatsappObjectKey
+            ? await container.services.asset.getSignedUrl(sticker.whatsappObjectKey, userId)
+            : null,
           width: sticker.width,
           height: sticker.height,
           durationMs: sticker.durationMs,
@@ -139,12 +150,28 @@ export const WhatsAppStickerExportController = {
 
       try {
         const result = await WhatsAppService.exportPack({
-          stickers: stickers.map(s => ({ id: s.id, imageUrl: s.imageUrl, animatedWebpUrl: s.animatedWebpUrl })),
-          sourceUrl: pkg.icon || stickers[0].imageUrl
+          stickers: stickers.map(s => ({
+            id: s.id,
+            objectKey: s.objectKey,
+            objectHash: s.objectHash,
+            imageUrl: s.imageUrl,
+            animatedWebpUrl: s.animatedWebpUrl
+          })),
+          sourceUrl: pkg.icon || (stickers[0].objectKey
+            ? { objectKey: stickers[0].objectKey }
+            : stickers[0].imageUrl),
+          assetService: container.services.asset,
+          ownerId: userId,
+          idempotencyKey: `whatsapp-tray:${pkg.id}:${stickers[0].objectHash || 'legacy'}`
         });
 
         pkg.markExportReady({
-          trayIconUrl: result.trayIconUrl,
+          trayIconObjectKey: result.trayIconObjectKey,
+          trayIconObjectHash: result.trayIconObjectHash,
+          trayIconObjectSize: result.trayIconObjectSize,
+          trayIconObjectMime: result.trayIconObjectMime,
+          trayIconObjectWidth: result.trayIconObjectWidth,
+          trayIconObjectHeight: result.trayIconObjectHeight,
           whatsappReady: result.whatsappReady
         });
         pkg.packType = result.packType;
@@ -164,7 +191,7 @@ export const WhatsAppStickerExportController = {
           success: true,
           package: {
             id: pkg.id,
-            trayIconUrl: pkg.trayIconUrl,
+            trayIconUrl: result.trayIconUrl,
             packType: pkg.packType,
             whatsappReady: pkg.whatsappReady,
             exportStatus: pkg.exportStatus,
@@ -203,16 +230,24 @@ export const WhatsAppStickerExportController = {
 
       const stickers = await container.repositories.sticker.findByPackageId(id);
       let trayValidation = null;
-      if (pkg.trayIconUrl) {
-        trayValidation = await WhatsAppService.validateTrayIcon(pkg.trayIconUrl);
+      if (pkg.trayIconObjectKey) {
+        trayValidation = await WhatsAppService.validateTrayIcon(
+          pkg.trayIconObjectKey,
+          container.services.asset,
+          userId
+        );
       }
 
       const stickerValidations = [];
       for (const sticker of stickers) {
-        if (sticker.whatsappWebpUrl) {
+        if (sticker.whatsappObjectKey) {
           stickerValidations.push({
             id: sticker.id,
-            ...(await WhatsAppService.validateSticker(sticker.whatsappWebpUrl))
+            ...(await WhatsAppService.validateSticker(
+              sticker.whatsappObjectKey,
+              container.services.asset,
+              userId
+            ))
           });
         }
       }
@@ -221,7 +256,9 @@ export const WhatsAppStickerExportController = {
         success: true,
         package: {
           id: pkg.id,
-          trayIconUrl: pkg.trayIconUrl,
+          trayIconUrl: pkg.trayIconObjectKey
+            ? await container.services.asset.getSignedUrl(pkg.trayIconObjectKey, userId)
+            : null,
           packType: pkg.packType,
           whatsappReady: pkg.whatsappReady,
           exportStatus: pkg.exportStatus,
