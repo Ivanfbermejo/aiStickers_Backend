@@ -301,7 +301,8 @@ model GenerationJob {
   input                Json                @default("{}")
   result               Json?
   provider             String?
-  // Prepared for async provider polling; unused until repositories move off JSON.
+  // Durable provider state: workers persist this before polling so retries
+  // never create a second external prediction.
   providerPredictionId String?
   cost                 Int                 @default(1)
   attempts             Int                 @default(0)

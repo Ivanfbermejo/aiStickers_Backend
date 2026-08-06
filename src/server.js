@@ -281,18 +281,14 @@ export async function createApp() {
 }
 
 /**
- * Bootstrap the production server: create the app, start the background worker,
- * and listen on the configured port. Returns handles required for graceful
- * shutdown.
+ * Bootstrap the HTTP process. Generation consumers run separately through
+ * `npm run worker:generation`; this process is producer-only.
  */
 export async function startServer(options = {}) {
   const { app, container } = await createApp();
 
   const PORT = options.port ?? env.PORT;
   const HOST = options.host ?? '0.0.0.0';
-
-  // Start async generation worker
-  container.services.generationJobWorker?.start();
 
   const server = app.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
@@ -330,10 +326,10 @@ export async function startServer(options = {}) {
 }
 
 /**
- * Gracefully stop the HTTP server and the background worker.
+ * Gracefully stop the HTTP producer process.
  */
 export async function stopServer({ server, container }) {
-  container.services.generationJobWorker?.stop();
   await new Promise((resolve) => server.close(() => resolve()));
+  await container.services.generationQueue?.close();
   await disconnectPrisma();
 }

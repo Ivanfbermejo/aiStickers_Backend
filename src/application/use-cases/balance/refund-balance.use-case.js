@@ -15,8 +15,8 @@ export class RefundBalanceUseCase {
     this.unitOfWork = unitOfWork;
   }
 
-  static refundKey(userId, productId, reason = '') {
-    const cause = `${userId}:${productId}:${reason}`;
+  static refundKey(userId, productId, reason = '', jobId = '') {
+    const cause = jobId ? `${userId}:${productId}:job:${jobId}` : `${userId}:${productId}:${reason}`;
     return `refund:${createHash('sha256').update(cause).digest('hex')}`;
   }
 
@@ -27,10 +27,11 @@ export class RefundBalanceUseCase {
    * @param {number} input.amount - Amount to refund
    * @param {string} input.productId - Product/job type that failed
    * @param {string} input.reason - Reason for refund
+   * @param {string} [input.jobId] - Durable generation job id
    * @returns {Object} Refund result
    */
-  async execute({ userId, amount, productId, reason = '' }) {
-    const idempotencyKey = RefundBalanceUseCase.refundKey(userId, productId, reason);
+  async execute({ userId, amount, productId, reason = '', jobId }) {
+    const idempotencyKey = RefundBalanceUseCase.refundKey(userId, productId, reason, jobId);
 
     const existing = await this.transactionRepository.findByProviderTransactionId(idempotencyKey);
     if (existing) {

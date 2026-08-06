@@ -14,6 +14,7 @@ import { AssetCleanupService } from '../application/services/asset-cleanup.servi
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
 import { ReplicateAnimationProvider } from '../infrastructure/ai/replicate-animation.provider.js';
 import { GenerationJobWorker } from '../infrastructure/ai/generation-job.worker.js';
+import { GenerationQueueProducer } from '../infrastructure/queue/bullmq-runtime.js';
 
 import { AuthenticateGoogleUseCase } from '../application/use-cases/auth/authenticate-google.use-case.js';
 import { ValidatePurchaseUseCase } from '../application/use-cases/purchase/validate-purchase.use-case.js';
@@ -48,6 +49,10 @@ export class Container {
     // Repositories (Infrastructure)
     this.repositories = await createRepositories();
 
+    // Queue connections are opened lazily. The HTTP process only produces
+    // durable jobs; the BullMQ consumer is created by worker:generation.
+    this.services.generationQueue = new GenerationQueueProducer();
+
     // Private object storage for all user assets.
     this.services.assetStorage = createAssetStorage();
     this.services.asset = new AssetService({
@@ -57,7 +62,11 @@ export class Container {
       jwtAudience: env.JWT_AUDIENCE,
       signedUrlExpirySeconds: env.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS
     });
-    this.services.assetCleanup = new AssetCleanupService({ assetService: this.services.asset, dataDir: env.DATA_DIR });
+    this.services.assetCleanup = new AssetCleanupService({
+      assetService: this.services.asset,
+      dataDir: env.DATA_DIR,
+      queue: this.services.generationQueue
+    });
 
     // Services (Infrastructure)
     this.services.jwt = new JwtService();
@@ -117,7 +126,8 @@ export class Container {
     this.useCases.createGenerationJob = new CreateGenerationJobUseCase({
       generationJobRepository: this.repositories.generationJob,
       stickerRepository: this.repositories.sticker,
-      spendBalanceUseCase: this.useCases.spendBalance
+      spendBalanceUseCase: this.useCases.spendBalance,
+      generationQueue: this.services.generationQueue
     });
 
     this.useCases.getGenerationJob = new GetGenerationJobUseCase({
@@ -136,7 +146,8 @@ export class Container {
       animationProvider: this.services.animationProvider,
       assetService: this.services.asset,
       refundBalanceUseCase: this.useCases.refundBalance,
-      intervalMs: 5000
+      queueTimeoutMs: env.GENERATION_QUEUE_TIMEOUT_MS,
+      lockDurationMs: env.GENERATION_QUEUE_LOCK_DURATION_MS
     });
 
     this.initialized = true;

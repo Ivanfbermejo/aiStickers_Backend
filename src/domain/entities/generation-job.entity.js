@@ -15,7 +15,12 @@ export class GenerationJob {
     input,
     result,
     provider,
+    providerPredictionId,
     cost = 1,
+    attempts = 0,
+    lockedAt,
+    completedAt,
+    refundedAt,
     errorMessage,
     createdAt,
     updatedAt
@@ -31,7 +36,12 @@ export class GenerationJob {
     this.input = input;
     this.result = result;
     this.provider = provider;
+    this.providerPredictionId = providerPredictionId;
     this.cost = cost;
+    this.attempts = attempts;
+    this.lockedAt = lockedAt;
+    this.completedAt = completedAt;
+    this.refundedAt = refundedAt;
     this.errorMessage = errorMessage;
     this.createdAt = createdAt || new Date().toISOString();
     this.updatedAt = updatedAt || new Date().toISOString();
@@ -66,6 +76,35 @@ export class GenerationJob {
     this.status = 'processing';
     this.currentStep = currentStep;
     this.progress = Math.max(this.progress, 10);
+    this.attempts += 1;
+    this.lockedAt = new Date().toISOString();
+    this.updatedAt = new Date().toISOString();
+  }
+
+  setProviderPredictionId(providerPredictionId) {
+    if (!providerPredictionId) {
+      throw new Error('providerPredictionId is required');
+    }
+    this.providerPredictionId = providerPredictionId;
+    this.currentStep = 'polling_provider';
+    this.updatedAt = new Date().toISOString();
+  }
+
+  markRetryable(currentStep = 'retrying') {
+    this.status = 'queued';
+    this.currentStep = currentStep;
+    this.lockedAt = undefined;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  requeueFromDlq() {
+    if (this.status !== 'failed' || this.currentStep !== 'dead_letter') {
+      throw new Error('Only dead-letter jobs can be replayed');
+    }
+    this.status = 'queued';
+    this.currentStep = 'replayed';
+    this.errorMessage = undefined;
+    this.lockedAt = undefined;
     this.updatedAt = new Date().toISOString();
   }
 
@@ -81,6 +120,8 @@ export class GenerationJob {
     this.progress = 100;
     this.result = result;
     this.errorMessage = undefined;
+    this.lockedAt = undefined;
+    this.completedAt = new Date().toISOString();
     this.updatedAt = new Date().toISOString();
   }
 
@@ -88,6 +129,7 @@ export class GenerationJob {
     this.status = 'failed';
     this.currentStep = currentStep;
     this.errorMessage = errorMessage;
+    this.lockedAt = undefined;
     this.updatedAt = new Date().toISOString();
   }
 

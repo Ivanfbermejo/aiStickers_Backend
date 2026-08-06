@@ -52,7 +52,12 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
       input: job.input,
       result: job.result,
       provider: job.provider,
+      providerPredictionId: job.providerPredictionId,
       cost: job.cost,
+      attempts: job.attempts,
+      lockedAt: job.lockedAt,
+      completedAt: job.completedAt,
+      refundedAt: job.refundedAt,
       errorMessage: job.errorMessage,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt
@@ -89,6 +94,16 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     return jobs.map(j => new GenerationJob(j));
   }
 
+  async findRecoverable(limit = 100) {
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    const jobs = Array.from(this.cache.values())
+      .filter(job => job.status === 'queued' ||
+        (job.status === 'processing' && (!job.lockedAt || new Date(job.lockedAt).getTime() < cutoff)))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .slice(0, limit);
+    return jobs.map(job => new GenerationJob(job));
+  }
+
   async findByStickerId(stickerId) {
     const data = Array.from(this.cache.values()).find(j => j.stickerId === stickerId);
     if (!data) return null;
@@ -118,6 +133,17 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     if (!data) return null;
     const job = new GenerationJob(data);
     job.markProcessing();
+    await this.save(job);
+    return job;
+  }
+
+  async claimJob(id, lockTimeoutMs = 5 * 60 * 1000) {
+    const data = this.cache.get(id);
+    if (!data) return null;
+    const stale = !data.lockedAt || new Date(data.lockedAt).getTime() < Date.now() - lockTimeoutMs;
+    if (!stale || ['completed', 'failed', 'cancelled'].includes(data.status)) return null;
+    const job = new GenerationJob(data);
+    job.markProcessing('processing');
     await this.save(job);
     return job;
   }

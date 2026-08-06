@@ -6,10 +6,11 @@ import { GenerationJob } from '../../../domain/entities/generation-job.entity.js
  * Validates balance, creates a sticker and an async generation job, and returns immediately
  */
 export class CreateGenerationJobUseCase {
-  constructor({ generationJobRepository, stickerRepository, spendBalanceUseCase }) {
+  constructor({ generationJobRepository, stickerRepository, spendBalanceUseCase, generationQueue }) {
     this.generationJobRepository = generationJobRepository;
     this.stickerRepository = stickerRepository;
     this.spendBalanceUseCase = spendBalanceUseCase;
+    this.generationQueue = generationQueue;
   }
 
   /**
@@ -89,12 +90,24 @@ export class CreateGenerationJobUseCase {
 
     await this.generationJobRepository.save(job);
 
+    // The database row is the source of truth. If Redis is unavailable after
+    // this commit, the worker reconciler will enqueue this same PostgreSQL ID.
+    let queue = { enqueued: false, pendingReconciliation: true };
+    if (this.generationQueue) {
+      try {
+        queue = await this.generationQueue.enqueueGeneration(job.id);
+      } catch (enqueueError) {
+        console.error(`[GenerationQueue] enqueue failed for ${job.id}; reconciler will retry:`, enqueueError.message);
+      }
+    }
+
     return {
       success: true,
       jobId: job.id,
       stickerId: sticker.id,
       status: job.status,
-      remainingBalance: spendResult.newBalance
+      remainingBalance: spendResult.newBalance,
+      queue
     };
   }
 }

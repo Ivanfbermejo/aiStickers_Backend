@@ -141,6 +141,20 @@ function parsePositiveInt(value, defaultValue, name, maxValue = Number.MAX_SAFE_
   return n;
 }
 
+function parseRedisUrl(value) {
+  const redisUrl = value || 'redis://127.0.0.1:6379';
+  let parsed;
+  try {
+    parsed = new URL(redisUrl);
+  } catch {
+    throw new Error('REDIS_URL must be a valid redis:// or rediss:// URL');
+  }
+  if (!['redis:', 'rediss:'].includes(parsed.protocol)) {
+    throw new Error('REDIS_URL must use redis:// or rediss://');
+  }
+  return redisUrl;
+}
+
 /**
  * Build a typed configuration object from process.env.
  * Throws on invalid values so the process fails fast.
@@ -158,6 +172,23 @@ export function loadConfig(rawEnv = process.env) {
     // (see validateEnv). Repositories still read/write JSON until T05B.
     PERSISTENCE_DRIVER: parsePersistenceDriver(rawEnv.PERSISTENCE_DRIVER),
     DATABASE_URL: rawEnv.DATABASE_URL,
+
+    // BullMQ uses Redis as its durable transport. Redis is internal-only in
+    // Compose; production should use a private redis:// or rediss:// endpoint.
+    REDIS_URL: parseRedisUrl(rawEnv.REDIS_URL || rawEnv.QUEUE_REDIS_URL),
+    GENERATION_QUEUE_NAME: rawEnv.GENERATION_QUEUE_NAME || 'generation',
+    GENERATION_QUEUE_PREFIX: rawEnv.GENERATION_QUEUE_PREFIX || 'aistickers',
+    GENERATION_QUEUE_ENABLED: parseBooleanFlag(rawEnv.GENERATION_QUEUE_ENABLED, true),
+    GENERATION_QUEUE_CONCURRENCY: parsePositiveInt(rawEnv.GENERATION_QUEUE_CONCURRENCY, 2, 'GENERATION_QUEUE_CONCURRENCY', 32),
+    GENERATION_QUEUE_ATTEMPTS: parsePositiveInt(rawEnv.GENERATION_QUEUE_ATTEMPTS, 5, 'GENERATION_QUEUE_ATTEMPTS', 20),
+    GENERATION_QUEUE_BACKOFF_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_BACKOFF_MS, 5000, 'GENERATION_QUEUE_BACKOFF_MS', 300000),
+    GENERATION_QUEUE_TIMEOUT_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_TIMEOUT_MS, 180000, 'GENERATION_QUEUE_TIMEOUT_MS', 3600000),
+    GENERATION_QUEUE_STALLED_INTERVAL_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_STALLED_INTERVAL_MS, 30000, 'GENERATION_QUEUE_STALLED_INTERVAL_MS', 300000),
+    GENERATION_QUEUE_LOCK_DURATION_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_LOCK_DURATION_MS, 240000, 'GENERATION_QUEUE_LOCK_DURATION_MS', 3600000),
+    GENERATION_QUEUE_RECONCILE_INTERVAL_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_RECONCILE_INTERVAL_MS, 30000, 'GENERATION_QUEUE_RECONCILE_INTERVAL_MS', 3600000),
+    GENERATION_QUEUE_SHUTDOWN_TIMEOUT_MS: parsePositiveInt(rawEnv.GENERATION_QUEUE_SHUTDOWN_TIMEOUT_MS, 30000, 'GENERATION_QUEUE_SHUTDOWN_TIMEOUT_MS', 300000),
+    CLEANUP_QUEUE_NAME: rawEnv.CLEANUP_QUEUE_NAME || 'asset-cleanup',
+    CLEANUP_QUEUE_CONCURRENCY: parsePositiveInt(rawEnv.CLEANUP_QUEUE_CONCURRENCY, 2, 'CLEANUP_QUEUE_CONCURRENCY', 16),
 
     // Private assets use S3-compatible storage in production. Local storage is
     // intentionally restricted to development and tests.

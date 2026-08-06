@@ -23,6 +23,10 @@ export class IGenerationJobRepository {
     throw new Error('Method not implemented');
   }
 
+  async findRecoverable(_limit = 100) {
+    throw new Error('Method not implemented');
+  }
+
   async findByStickerId(stickerId) {
     throw new Error('Method not implemented');
   }
@@ -40,6 +44,10 @@ export class IGenerationJobRepository {
    * Returns the claimed job or null if none are available.
    */
   async claimNextPendingJob() {
+    throw new Error('Method not implemented');
+  }
+
+  async claimJob(_id, _lockTimeoutMs) {
     throw new Error('Method not implemented');
   }
 }

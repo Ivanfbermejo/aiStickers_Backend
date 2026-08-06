@@ -10,12 +10,15 @@ services:
       DATA_DIR: /app/data
       ASSET_STORAGE_DRIVER: local
       ASSET_STORAGE_LOCAL_BASE_DIR: /app/data
+      REDIS_URL: redis://redis:6379
     ports:
       - "127.0.0.1:2002:2002"
     volumes:
       - aistickers_dev_data:/app/data
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     init: true
     restart: unless-stopped
@@ -33,8 +36,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # T05A: PostgreSQL for schema/migration work. Repositories still read/write
-  # JSON until T05B — this service is provisioned ahead of that cutover.
+  # The HTTP process only produces BullMQ jobs. It never starts a consumer.
+  worker:
+    build: .
+    image: aistickers-backend:dev
+    command: ["npm", "run", "worker:generation"]
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: development
+      DATA_DIR: /app/data
+      ASSET_STORAGE_DRIVER: local
+      ASSET_STORAGE_LOCAL_BASE_DIR: /app/data
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - aistickers_dev_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    cpus: "1.0"
+    mem_limit: 1g
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL is the durable source of truth for production and worker jobs.
   # Intentionally has NO "ports:" mapping: only reachable from other
   # containers on the compose network, never from the host or the internet.
   db:
@@ -57,6 +91,29 @@ services:
       interval: 10s
       timeout: 5s
       start_period: 10s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Durable BullMQ transport. No ports mapping: reachable only on the
+  # internal Compose network, never from the host or the public internet.
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - aistickers_dev_redis:/data
+    init: true
+    restart: unless-stopped
+    cpus: "0.5"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
       retries: 5
     logging:
       driver: json-file
@@ -105,5 +162,7 @@ volumes:
     name: aistickers_dev_data
   aistickers_dev_db:
     name: aistickers_dev_db
+  aistickers_dev_redis:
+    name: aistickers_dev_redis
   aistickers_dev_minio:
     name: aistickers_dev_minio

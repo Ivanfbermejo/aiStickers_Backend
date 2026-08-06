@@ -32,7 +32,12 @@ function toJob(raw) {
     input: raw.input ?? {},
     result: raw.result ?? undefined,
     provider: raw.provider ?? null,
+    providerPredictionId: raw.providerPredictionId ?? null,
     cost: raw.cost,
+    attempts: raw.attempts ?? 0,
+    lockedAt: raw.lockedAt?.toISOString() ?? null,
+    completedAt: raw.completedAt?.toISOString() ?? null,
+    refundedAt: raw.refundedAt?.toISOString() ?? null,
     errorMessage: raw.errorMessage ?? undefined,
     createdAt: raw.createdAt.toISOString(),
     updatedAt: raw.updatedAt.toISOString()
@@ -52,7 +57,12 @@ function toJobData(job) {
     input: job.input || {},
     result: job.result ?? null,
     provider: job.provider ?? null,
+    providerPredictionId: job.providerPredictionId ?? null,
     cost: job.cost,
+    attempts: job.attempts ?? 0,
+    lockedAt: job.lockedAt ? new Date(job.lockedAt) : null,
+    completedAt: job.completedAt ? new Date(job.completedAt) : null,
+    refundedAt: job.refundedAt ? new Date(job.refundedAt) : null,
     errorMessage: job.errorMessage ?? null,
     createdAt: new Date(job.createdAt),
     updatedAt: new Date(job.updatedAt)
@@ -109,6 +119,21 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return rows.map(toJob);
   }
 
+  async findRecoverable(limit = 100, tx) {
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000);
+    const rows = await this._getPrisma(tx).generationJob.findMany({
+      where: {
+        OR: [
+          { status: 'QUEUED' },
+          { status: 'PROCESSING', lockedAt: { lt: cutoff } }
+        ]
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit
+    });
+    return rows.map(toJob);
+  }
+
   async findByStickerId(stickerId, tx) {
     const raw = await this._getPrisma(tx).generationJob.findFirst({ where: { stickerId } });
     return toJob(raw);
@@ -124,24 +149,31 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return result.count;
   }
 
-  /**
-   * Atomically claim the oldest available queued job.
-   * Returns the claimed GenerationJob, or null if none are available.
-   */
-  async claimNextPendingJob() {
+  /** Atomically claim one BullMQ job in PostgreSQL. */
+  async claimJob(id, lockTimeoutMs = 5 * 60 * 1000) {
     const prisma = this._getPrisma();
+    const cutoff = new Date(Date.now() - lockTimeoutMs);
     const [raw] = await prisma.$queryRaw`
       UPDATE "generation_jobs"
-      SET status = 'PROCESSING', "currentStep" = 'processing', "lockedAt" = NOW(), "updatedAt" = NOW()
-      WHERE id = (
-        SELECT id FROM "generation_jobs"
-        WHERE status = 'QUEUED' AND "lockedAt" IS NULL
-        ORDER BY "createdAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      )
+      SET status = 'PROCESSING', "currentStep" = 'processing', "lockedAt" = NOW(),
+          "attempts" = "attempts" + 1, "updatedAt" = NOW()
+      WHERE id = ${id}
+        AND status IN ('QUEUED', 'PROCESSING')
+        AND ("lockedAt" IS NULL OR "lockedAt" < ${cutoff})
       RETURNING *
     `;
     return raw ? toJob(raw) : null;
+  }
+
+  /** Compatibility helper for repository contract tests and operators. */
+  async claimNextPendingJob() {
+    const prisma = this._getPrisma();
+    const [candidate] = await prisma.$queryRaw`
+      SELECT id FROM "generation_jobs"
+      WHERE status = 'QUEUED' AND "lockedAt" IS NULL
+      ORDER BY "createdAt" ASC
+      LIMIT 1
+    `;
+    return candidate ? this.claimJob(candidate.id) : null;
   }
 }

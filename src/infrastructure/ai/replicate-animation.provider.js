@@ -2,13 +2,14 @@ import fetch from 'node-fetch';
 import { AnimationProvider } from '../../application/providers/animation.provider.js';
 import { env } from '../../config/env.js';
 import { pollPrediction } from './replicate-poll.js';
+import { ProviderError, providerHttpError } from './provider-error.js';
 
 /**
  * Replicate Animation Provider Implementation
  * Generates video/animation from an image + prompt
  */
 export class ReplicateAnimationProvider extends AnimationProvider {
-  async animate(input) {
+  async createPrediction(input) {
     const {
       imageUrl,
       prompt,
@@ -24,35 +25,52 @@ export class ReplicateAnimationProvider extends AnimationProvider {
 
     const model = env.REPLICATE_IMG2VID_MODEL || 'bytedance/seedance-1-pro';
 
-    const res = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Token ${env.REPLICATE_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        version: model,
-        input: {
-          prompt,
-          duration,
-          image: imageUrl,
-          resolution,
-          fps,
-          aspect_ratio
-        }
-      })
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Replicate API error: ${errText}`);
+    let res;
+    try {
+      res = await fetch('https://api.replicate.com/v1/predictions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${env.REPLICATE_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          version: model,
+          input: {
+            prompt,
+            duration,
+            image: imageUrl,
+            resolution,
+            fps,
+            aspect_ratio
+          }
+        })
+      });
+    } catch {
+      throw new ProviderError('Provider create request failed', { code: 'PROVIDER_NETWORK' });
     }
+    if (!res.ok) throw providerHttpError(res.status);
 
     const pred = await res.json();
-    const finalPred = await pollPrediction(`https://api.replicate.com/v1/predictions/${pred.id}`);
+    if (!pred.id) throw new ProviderError('Provider returned no prediction id', { code: 'PROVIDER_INVALID_RESPONSE' });
+    return {
+      providerPredictionId: pred.id,
+      predictionUrl: pred.urls?.get || `https://api.replicate.com/v1/predictions/${pred.id}`
+    };
+  }
+
+  async pollPrediction(providerPredictionId, { timeoutMs = 180_000, intervalMs = 1500 } = {}) {
+    const finalPred = await pollPrediction(
+      `https://api.replicate.com/v1/predictions/${providerPredictionId}`,
+      timeoutMs,
+      intervalMs
+    );
 
     if (finalPred.status !== 'succeeded') {
-      throw new Error(`Replicate ${finalPred.status}: ${finalPred.error || 'no detail'}`);
+      throw new ProviderError(`Provider prediction ${finalPred.status || 'failed'}`, {
+        code: `PROVIDER_${String(finalPred.status || 'FAILED').toUpperCase()}`,
+        terminal: ['failed', 'canceled', 'cancelled'].includes(finalPred.status),
+        transient: !['failed', 'canceled', 'cancelled'].includes(finalPred.status)
+      });
     }
 
     const videoUrl = Array.isArray(finalPred.output) ? finalPred.output[0] : finalPred.output;
@@ -67,5 +85,10 @@ export class ReplicateAnimationProvider extends AnimationProvider {
       webpUrl: videoUrl,
       providerPredictionId: finalPred.id
     };
+  }
+
+  async animate(input) {
+    const created = await this.createPrediction(input);
+    return this.pollPrediction(created.providerPredictionId);
   }
 }
