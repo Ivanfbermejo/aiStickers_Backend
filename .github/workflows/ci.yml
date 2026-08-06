@@ -13,6 +13,12 @@ env:
   CLIENT_ID: ai-stickers-test
   TELEGRAM_BOT_TOKEN: test-token
   DATA_DIR: ./tmp-data
+  RUN_MINIO_INTEGRATION: "true"
+  MINIO_ENDPOINT: http://127.0.0.1:9000
+  MINIO_BUCKET: aistickers-private-assets
+  MINIO_REGION: us-east-1
+  MINIO_ACCESS_KEY_ID: minioadmin
+  MINIO_SECRET_ACCESS_KEY: minioadmin123
   # T05A: real PostgreSQL for schema/migration tests (tests/integration/postgres).
   # PERSISTENCE_DRIVER stays 'json' for the app itself; only these tests use it.
   DATABASE_URL: postgresql://aistickers:aistickers_ci_password@localhost:5432/aistickers_test
@@ -34,6 +40,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,11 +65,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Initialize private MinIO bucket
+        run: >-
+          docker run --rm --network host
+          minio/mc:latest sh -c
+          "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin123 &&
+          mc mb --ignore-existing local/aistickers-private-assets &&
+          mc anonymous set none local/aistickers-private-assets"
+
       - name: Syntax check
         run: node --check index.js
 
       - name: Run tests
         run: npm test
+
+      - name: Verify MinIO volume survives service recreation
+        run: |
+          node scripts/minio-persistence-check.js --seed
+          docker restart ${{ job.services.minio.id }}
+          until curl --fail --silent http://127.0.0.1:9000/minio/health/live; do sleep 1; done
+          node scripts/minio-persistence-check.js --verify
 
       - name: Start server and verify health
         run: node scripts/smoke-start.js

@@ -39,6 +39,11 @@ export class CreateGenerationJobUseCase {
     if (!validTypes.includes(type)) {
       throw new Error(`Invalid generation type: ${type}`);
     }
+    // Video needs a dedicated binary validator and media model. Until T12,
+    // reject it before charging or creating records.
+    if (type === 'animated_sticker' || type === 'img2vid') {
+      throw new Error('Video generation is disabled until T12');
+    }
 
     if (!asset?.key) {
       throw new Error('asset with objectKey metadata is required');

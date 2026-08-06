@@ -45,6 +45,9 @@ export class GenerationController {
           message: 'type is required'
         });
       }
+      if (type === 'animated_sticker' || type === 'img2vid') {
+        return res.status(503).json({ error: 'Video generation unavailable', message: 'Video generation is disabled until T12' });
+      }
 
       if (imageUrl && !isAllowedExternalImageUrl(imageUrl)) {
         return res.status(400).json({

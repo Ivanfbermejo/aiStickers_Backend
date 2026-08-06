@@ -4,8 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
-  ListObjectsV2Command,
-  ServerSideEncryption
+  ListObjectsV2Command
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { AssetStorage } from '../../application/storage/asset-storage.js';
@@ -40,7 +39,8 @@ function normalizeMetadata(metadata = {}, response = {}) {
  * S3-compatible implementation of AssetStorage.
  *
  * Supports AWS S3 and providers that expose the S3 API. Objects are
- * always server-side encrypted and private; public ACLs are never used.
+ * private; public ACLs are never used. SSE-S3 is opt-in because a plain
+ * MinIO development server has no KMS configured.
  */
 export class S3AssetStorage extends AssetStorage {
   constructor({
@@ -51,12 +51,14 @@ export class S3AssetStorage extends AssetStorage {
     secretAccessKey,
     forcePathStyle = false,
     prefix = '',
-    maxObjectBytes = DEFAULT_MAX_OBJECT_BYTES
+    maxObjectBytes = DEFAULT_MAX_OBJECT_BYTES,
+    serverSideEncryption
   }) {
     super();
     this.bucket = bucket;
     this.prefix = prefix ? `${prefix.replace(/\/$/, '')}/` : '';
     this.maxObjectBytes = maxObjectBytes;
+    this.serverSideEncryption = serverSideEncryption;
     this.client = new S3Client({
       endpoint,
       region: region || 'us-east-1',
@@ -86,7 +88,7 @@ export class S3AssetStorage extends AssetStorage {
           .filter(([, v]) => v !== undefined && v !== null)
           .map(([k, v]) => [k, String(v)])
       ),
-      ServerSideEncryption: ServerSideEncryption.AES256
+      ...(this.serverSideEncryption ? { ServerSideEncryption: this.serverSideEncryption } : {})
     });
     await this.client.send(command);
   }

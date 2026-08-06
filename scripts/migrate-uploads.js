@@ -61,13 +61,22 @@ async function loadJsonReferences() {
       for (const field of fields) addReference(references, item[field], item.userId);
     }
   }
+  const jobsFile = path.join(env.DATA_DIR, 'generation-jobs.json');
+  if (fs.existsSync(jobsFile)) {
+    const jobs = JSON.parse(await fs.promises.readFile(jobsFile, 'utf8'));
+    for (const job of Object.values(jobs)) {
+      for (const value of [job.input?.imageUrl, job.input?.sourceUrl, job.result?.imageUrl, job.result?.videoUrl]) {
+        addReference(references, value, job.userId);
+      }
+    }
+  }
   return references;
 }
 
 async function loadPostgresReferences() {
   const client = getPrismaClient();
   const references = new Map();
-  const [stickers, packages] = await Promise.all([
+  const [stickers, packages, jobs] = await Promise.all([
     client.sticker.findMany({
       select: {
         userId: true,
@@ -78,7 +87,8 @@ async function loadPostgresReferences() {
         whatsappWebpUrl: true
       }
     }),
-    client.package.findMany({ select: { userId: true, trayIconUrl: true } })
+    client.package.findMany({ select: { userId: true, trayIconUrl: true } }),
+    client.generationJob.findMany({ select: { userId: true, input: true, result: true } })
   ]);
   for (const sticker of stickers) {
     for (const field of ['imageUrl', 'thumbnailUrl', 'webpUrl', 'animatedWebpUrl', 'whatsappWebpUrl']) {
@@ -86,14 +96,43 @@ async function loadPostgresReferences() {
     }
   }
   for (const pkg of packages) addReference(references, pkg.trayIconUrl, pkg.userId);
+  for (const job of jobs) {
+    for (const value of [job.input?.imageUrl, job.input?.sourceUrl, job.result?.imageUrl, job.result?.videoUrl]) {
+      addReference(references, value, job.userId);
+    }
+  }
   return references;
 }
 
-async function verifyCopiedObject(storage, key, expectedHash, expectedSize) {
-  const { buffer } = await storage.getObject(key);
+async function verifyCopiedObject(storage, key, expectedHash, expectedSize, ownerId) {
+  const { buffer, metadata = {} } = await storage.getObject(key);
   if (buffer.length !== expectedSize || sha256(buffer) !== expectedHash) {
     throw new Error(`Verification failed for copied object ${key}`);
   }
+  if (String(metadata.ownerId || metadata.ownerid) !== ownerId) {
+    throw new Error(`Verification failed for copied object ownership ${key}`);
+  }
+}
+
+export async function copyOwnedAsset({ storage, buffer, ownerId, relative, dryRun = true }) {
+  const hash = sha256(buffer);
+  const meta = await validateImageBuffer(buffer);
+  const publicUrl = `/uploads/${relative}`;
+  const key = migrationKey({ ownerId, relative, hash, format: meta.format });
+  const record = {
+    relative, publicUrl, ownerId, key, hash, sizeBytes: buffer.length,
+    mimeType: meta.format === 'jpg' ? 'image/jpeg' : `image/${meta.format}`,
+    width: meta.width, height: meta.height, skipped: false
+  };
+  if (dryRun) return record;
+  if (!(await storage.objectExists(key))) {
+    await storage.putObject(key, buffer, {
+      ownerId, hash, sizeBytes: buffer.length, mimeType: record.mimeType,
+      width: meta.width, height: meta.height, migratedFrom: publicUrl
+    });
+  }
+  await verifyCopiedObject(storage, key, hash, buffer.length, ownerId);
+  return record;
 }
 
 async function migrateFile(storage, filePath, owners) {
@@ -104,48 +143,20 @@ async function migrateFile(storage, filePath, owners) {
   }
 
   const buffer = await fs.promises.readFile(filePath);
-  const hash = sha256(buffer);
-  let meta;
   try {
-    meta = await validateImageBuffer(buffer);
+    await validateImageBuffer(buffer);
   } catch (error) {
     return [{ relative, publicUrl, skipped: true, reason: `Not a valid image: ${error.message}` }];
   }
 
   const records = [];
   for (const ownerId of owners) {
-    const key = migrationKey({ ownerId, relative, hash, format: meta.format });
-    if (!DRY_RUN) {
-      if (!(await storage.objectExists(key))) {
-        await storage.putObject(key, buffer, {
-          ownerId,
-          hash,
-          sizeBytes: buffer.length,
-          mimeType: meta.format === 'jpg' ? 'image/jpeg' : `image/${meta.format}`,
-          width: meta.width,
-          height: meta.height,
-          migratedFrom: publicUrl
-        });
-      }
-      await verifyCopiedObject(storage, key, hash, buffer.length);
-    }
-    records.push({
-      relative,
-      publicUrl,
-      ownerId,
-      key,
-      hash,
-      sizeBytes: buffer.length,
-      mimeType: meta.format === 'jpg' ? 'image/jpeg' : `image/${meta.format}`,
-      width: meta.width,
-      height: meta.height,
-      skipped: false
-    });
+    records.push(await copyOwnedAsset({ storage, buffer, ownerId, relative, dryRun: DRY_RUN }));
   }
   return records;
 }
 
-function applyMainMetadata(item, record) {
+export function applyMainMetadata(item, record) {
   item.objectKey = record.key;
   item.objectHash = record.hash;
   item.objectSize = record.sizeBytes;
@@ -157,8 +168,28 @@ function applyMainMetadata(item, record) {
   }
 }
 
+export function applyGenerationReference(job, record) {
+  let changed = false;
+  for (const container of [job.input, job.result]) {
+    if (!container || typeof container !== 'object') continue;
+    for (const field of ['imageUrl', 'sourceUrl', 'videoUrl']) {
+      if (container[field] === record.publicUrl) {
+        container.objectKey = record.key;
+        container.hash = record.hash;
+        container.sizeBytes = record.sizeBytes;
+        container.mimeType = record.mimeType;
+        container.width = record.width;
+        container.height = record.height;
+        delete container[field];
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 async function updateJsonDatabase(records) {
-  for (const name of ['stickers', 'packages']) {
+  for (const name of ['stickers', 'packages', 'generation-jobs']) {
     const dbFile = path.join(env.DATA_DIR, `${name}.json`);
     if (!fs.existsSync(dbFile)) continue;
     const parsed = JSON.parse(await fs.promises.readFile(dbFile, 'utf8'));
@@ -183,7 +214,7 @@ async function updateJsonDatabase(records) {
             item.whatsappWebpUrl = null;
             updated++;
           }
-        } else if (item.trayIconUrl === record.publicUrl) {
+        } else if (name === 'packages' && item.trayIconUrl === record.publicUrl) {
           item.trayIconObjectKey = record.key;
           item.trayIconObjectHash = record.hash;
           item.trayIconObjectSize = record.sizeBytes;
@@ -191,6 +222,8 @@ async function updateJsonDatabase(records) {
           item.trayIconObjectWidth = record.width;
           item.trayIconObjectHeight = record.height;
           item.trayIconUrl = null;
+          updated++;
+        } else if (name === 'generation-jobs' && applyGenerationReference(item, record)) {
           updated++;
         }
       }
@@ -247,7 +280,16 @@ async function updatePostgresDatabase(records) {
         trayIconUrl: null
       }
     });
-    updated += main.count + whatsapp.count + tray.count;
+    const jobs = await client.generationJob.findMany({ where: { userId: record.ownerId } });
+    let jobsUpdated = 0;
+    for (const job of jobs) {
+      const copy = { input: job.input, result: job.result };
+      if (applyGenerationReference(copy, record)) {
+        await client.generationJob.update({ where: { id: job.id }, data: { input: copy.input, result: copy.result } });
+        jobsUpdated++;
+      }
+    }
+    updated += main.count + whatsapp.count + tray.count + jobsUpdated;
   }
   log(`  postgres: ${updated} reference(s) updated`);
 }

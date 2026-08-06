@@ -38,6 +38,7 @@ export function buildStorageConfig(rawEnv = process.env) {
     accessKeyId: rawEnv.ASSET_STORAGE_ACCESS_KEY_ID || undefined,
     secretAccessKey: rawEnv.ASSET_STORAGE_SECRET_ACCESS_KEY || undefined,
     forcePathStyle: (rawEnv.ASSET_STORAGE_FORCE_PATH_STYLE || '').trim().toLowerCase() === 'true',
+    serverSideEncryption: rawEnv.ASSET_STORAGE_SERVER_SIDE_ENCRYPTION || undefined,
     signedUrlExpirySeconds: parseIntSeconds(rawEnv.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS, 300),
     localBaseDir: rawEnv.ASSET_STORAGE_LOCAL_BASE_DIR || rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data'
   };
@@ -58,7 +59,8 @@ export function createAssetStorage(config = buildStorageConfig()) {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
       forcePathStyle: config.forcePathStyle,
-      prefix: config.prefix
+      prefix: config.prefix,
+      serverSideEncryption: config.serverSideEncryption
     });
   }
 

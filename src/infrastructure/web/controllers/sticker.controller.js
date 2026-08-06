@@ -384,10 +384,18 @@ export class StickerController {
         }
       }
 
-      for (const key of [sticker.objectKey, sticker.whatsappObjectKey].filter(Boolean)) {
-        await container.services.asset.deleteIfOwned(key, userId);
+      const cleanupTasks = await Promise.all([sticker.objectKey, sticker.whatsappObjectKey]
+        .filter(Boolean).map(key => container.services.assetCleanup.schedule({ key, ownerId: userId, entity: `sticker:${id}` })));
+      try {
+        await container.repositories.sticker.delete(id);
+      } catch (error) {
+        await Promise.all(cleanupTasks.map(task => container.services.assetCleanup.cancel(task)));
+        throw error;
       }
-      await container.repositories.sticker.delete(id);
+      await Promise.all(cleanupTasks.map(async task => {
+        await container.services.assetCleanup.confirm(task);
+        return container.services.assetCleanup.run(task).catch(error => console.error(`[AssetCleanup] deferred cleanup for ${task.key}:`, error.message));
+      }));
 
       return res.json({
         success: true,

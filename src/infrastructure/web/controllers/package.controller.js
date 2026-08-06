@@ -379,10 +379,19 @@ export class PackageController {
         await container.repositories.sticker.update(sticker);
       }
 
-      if (pkg.trayIconObjectKey) {
-        await container.services.asset.deleteIfOwned(pkg.trayIconObjectKey, userId);
+      const cleanupTask = pkg.trayIconObjectKey
+        ? await container.services.assetCleanup.schedule({ key: pkg.trayIconObjectKey, ownerId: userId, entity: `package:${id}` })
+        : null;
+      try {
+        await container.repositories.package.delete(id);
+      } catch (error) {
+        if (cleanupTask) await container.services.assetCleanup.cancel(cleanupTask);
+        throw error;
       }
-      await container.repositories.package.delete(id);
+      if (cleanupTask) {
+        await container.services.assetCleanup.confirm(cleanupTask);
+        await container.services.assetCleanup.run(cleanupTask).catch(error => console.error(`[AssetCleanup] deferred cleanup for ${cleanupTask.key}:`, error.message));
+      }
 
       return res.json({
         success: true,

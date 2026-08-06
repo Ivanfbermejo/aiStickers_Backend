@@ -107,80 +107,11 @@ export class AiController {
    * Image to video generation
    * POST /api/v1/ai/img2vid
    */
-  static async img2vid(req, res) {
-    try {
-      const { imageUrl, prompt, duration, resolution, fps } = req.body || {};
-
-      if (!imageUrl) {
-        return res.status(400).json({
-          error: 'imageUrl is required'
-        });
-      }
-
-      if (!isAllowedExternalImageUrl(imageUrl)) {
-        return res.status(400).json({
-          error: 'External image URLs disabled',
-          message: 'External image URLs are not enabled'
-        });
-      }
-
-      try {
-        await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
-      } catch (err) {
-        return res.status(400).json({
-          error: 'Invalid image URL',
-          message: err.message
-        });
-      }
-
-      const userId = req.user?.sub;
-      if (!userId) {
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User ID not found in token'
-        });
-      }
-
-      let inputAsset;
-      try {
-        inputAsset = await container.services.asset.ingestClientAsset({
-          reference: imageUrl,
-          ownerId: userId,
-          allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST
-        });
-      } catch (err) {
-        return res.status(400).json({ error: 'Invalid image asset', message: err.message });
-      }
-
-      const result = await container.useCases.createGenerationJob.execute({
-        userId,
-        type: 'img2vid',
-        asset: inputAsset,
-        prompt,
-        input: {
-          duration,
-          resolution,
-          fps
-        }
-      });
-
-      return res.json(result);
-
-    } catch (error) {
-      console.error('AI img2vid error:', error);
-
-      if (error.message === 'Insufficient balance') {
-        return res.status(400).json({
-          error: 'Insufficient balance',
-          message: 'Need 1 StickerDollar to generate a video'
-        });
-      }
-
-      return res.status(500).json({
-        error: 'Video generation failed',
-        message: error.message || 'Internal error'
-      });
-    }
+  static async img2vid(_req, res) {
+    return res.status(503).json({
+      error: 'Video generation unavailable',
+      message: 'Video generation is disabled until T12'
+    });
   }
 
   /**

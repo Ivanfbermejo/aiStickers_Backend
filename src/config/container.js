@@ -9,6 +9,7 @@ import { PlanService } from '../application/services/plan.service.js';
 import { CostService } from '../application/services/cost.service.js';
 import { SessionService } from '../application/services/session.service.js';
 import { AssetService } from '../application/services/asset.service.js';
+import { AssetCleanupService } from '../application/services/asset-cleanup.service.js';
 
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
 import { ReplicateAnimationProvider } from '../infrastructure/ai/replicate-animation.provider.js';
@@ -56,6 +57,7 @@ export class Container {
       jwtAudience: env.JWT_AUDIENCE,
       signedUrlExpirySeconds: env.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS
     });
+    this.services.assetCleanup = new AssetCleanupService({ assetService: this.services.asset, dataDir: env.DATA_DIR });
 
     // Services (Infrastructure)
     this.services.jwt = new JwtService();

@@ -86,7 +86,7 @@ describe('Feature flags', () => {
     expect(res.body.error).toMatch(/External image URLs disabled/i);
   });
 
-  it('rejects img2vid when external image URLs are disabled', async () => {
+  it('fails closed for img2vid until video storage is implemented', async () => {
     await seedBalance(ctx.container, 'user@example.com', 10);
     const body = { imageUrl: 'https://example.com/image.png', prompt: 'test' };
     const headers = signRequest({ method: 'POST', path: '/api/v1/ai/img2vid', body, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
@@ -96,7 +96,7 @@ describe('Feature flags', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(body);
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/External image URLs disabled/i);
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/Video generation unavailable/i);
   });
 });
