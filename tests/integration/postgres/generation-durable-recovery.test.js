@@ -19,6 +19,7 @@ import { CreateGenerationJobUseCase } from '../../../src/application/use-cases/g
 import {
   CLEANUP_QUEUE_NAME,
   GENERATION_DLQ_NAME,
+  GENERATION_QUEUE_NAME,
   GenerationQueueProducer,
   cleanupBullMQJobId,
   createBullMQQueue,
@@ -236,6 +237,29 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
     const handle = await createBullMQQueue(GENERATION_DLQ_NAME, runtimeConfig);
     try {
       return Boolean(await handle.queue.getJob(`dlq-${jobId}`));
+    } finally {
+      await handle.queue.close().catch(() => {});
+      await handle.connection.quit().catch(() => handle.connection.disconnect());
+    }
+  }
+
+  async function replaceSourceWithCompletedJob(runtimeConfig, jobId) {
+    const handle = await createBullMQQueue(GENERATION_QUEUE_NAME, runtimeConfig);
+    try {
+      const source = await handle.queue.getJob(jobId);
+      expect(source).toBeTruthy();
+      await source.remove();
+      await handle.queue.add('generation', { jobId }, {
+        jobId,
+        attempts: runtimeConfig.GENERATION_QUEUE_ATTEMPTS,
+        backoff: { type: 'exponential', delay: runtimeConfig.GENERATION_QUEUE_BACKOFF_MS },
+        removeOnComplete: { age: 86400, count: 1000 },
+        removeOnFail: false
+      });
+      await waitUntil(async () => {
+        const replacement = await handle.queue.getJob(jobId);
+        return replacement && await replacement.getState() === 'completed';
+      });
     } finally {
       await handle.queue.close().catch(() => {});
       await handle.connection.quit().catch(() => handle.connection.disconnect());
@@ -463,6 +487,7 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
       await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
       await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
       await waitForDlqJob(runtimeConfig, fixture.jobId);
+      await replaceSourceWithCompletedJob(runtimeConfig, fixture.jobId);
       const replay = await replayGenerationDlq({
         sourceJobId: fixture.jobId,
         providerPredictionId: 'pred-operator',
@@ -506,6 +531,7 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
       await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
       await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
       await waitForDlqJob(runtimeConfig, fixture.jobId);
+      await replaceSourceWithCompletedJob(runtimeConfig, fixture.jobId);
       const replay = await replayGenerationDlq({
         sourceJobId: fixture.jobId,
         confirmNotCreated: true,
@@ -517,6 +543,61 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
       expect(createCalls).toBe(2);
       expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(false);
     } finally {
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
+
+  it('keeps an ambiguous DLQ entry recoverable when enqueue fails', async () => {
+    const fixture = await createJob();
+    class CrashAfterPostRepository extends PostgresGenerationJobRepository {
+      async setProviderPredictionId() {
+        throw new Error('simulated database crash after POST');
+      }
+    }
+    const worker = makeWorker({
+      generationJobRepository: new CrashAfterPostRepository(prisma),
+      provider: {
+        createPrediction: async () => ({ providerPredictionId: 'pred-enqueue-failure' }),
+        pollPrediction: async () => ({ imageUrl: 'https://external.test/result.png' })
+      }
+    });
+    const prefix = `t08-replay-enqueue-failure-${randomUUID()}`;
+    const { runtime, queueProducer, runtimeConfig } = await startRuntime({ worker, prefix });
+    try {
+      await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
+      await waitForDlqJob(runtimeConfig, fixture.jobId);
+      await replaceSourceWithCompletedJob(runtimeConfig, fixture.jobId);
+      await prisma.generationJob.update({ where: { id: fixture.jobId }, data: { lockedAt: new Date() } });
+
+      const queueFactory = async (name, runtimeConfig) => {
+        const handle = await createBullMQQueue(name, runtimeConfig);
+        if (name !== GENERATION_QUEUE_NAME) return handle;
+        return {
+          queue: {
+            getJob: (...args) => handle.queue.getJob(...args),
+            add: async () => { throw new Error('simulated enqueue failure'); },
+            close: () => handle.queue.close()
+          },
+          connection: handle.connection
+        };
+      };
+
+      await expect(replayGenerationDlq({
+        sourceJobId: fixture.jobId,
+        providerPredictionId: 'pred-enqueue-failure',
+        config: runtimeConfig,
+        prisma,
+        queueFactory
+      })).rejects.toThrow('simulated enqueue failure');
+
+      const row = await prisma.generationJob.findUnique({ where: { id: fixture.jobId } });
+      expect(row.status).toBe('QUEUED');
+      expect(row.lockedAt).toBeNull();
+      expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(true);
+    } finally {
+      await removeDlqJob(runtimeConfig, fixture.jobId);
       await runtime.stop();
       await queueProducer.close();
     }

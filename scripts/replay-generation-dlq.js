@@ -76,6 +76,17 @@ async function requeueGenerationJob(queue, sourceJobId, config) {
       return { job: existing, action: 'retried' };
     }
     if (REQUEUEABLE_STATES.has(state)) return { job: existing, action: 'already-queued' };
+    if (state === 'completed') {
+      await existing.remove();
+      const job = await queue.add('generation', { jobId: sourceJobId }, {
+        jobId: sourceJobId,
+        attempts: config.GENERATION_QUEUE_ATTEMPTS,
+        backoff: { type: 'exponential', delay: config.GENERATION_QUEUE_BACKOFF_MS },
+        removeOnComplete: { age: 86400, count: 1000 },
+        removeOnFail: false
+      });
+      return { job, action: 'recreated-completed' };
+    }
     throw new Error(`Cannot replay generation job ${sourceJobId} while it is ${state}`);
   }
 
@@ -121,8 +132,9 @@ export async function replayGenerationDlq({
       where: { id: sourceJobId },
       data: {
         providerPredictionId: decision.providerPredictionId,
-        status: 'PROCESSING',
-        currentStep: 'queued'
+        status: 'QUEUED',
+        currentStep: 'queued',
+        lockedAt: null
       }
     });
 
