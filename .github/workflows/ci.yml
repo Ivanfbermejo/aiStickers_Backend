@@ -90,6 +90,8 @@ jobs:
 
       - name: Prepare isolated T08 database
         run: createdb --host=localhost --username=aistickers aistickers_t08_test
+        env:
+          PGPASSWORD: aistickers_ci_password
 
       - name: Run tests
         run: npm test

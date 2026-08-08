@@ -16,8 +16,17 @@ import { RefundBalanceUseCase } from '../../../src/application/use-cases/balance
 import { SpendBalanceUseCase } from '../../../src/application/use-cases/balance/spend-balance.use-case.js';
 import { CostService } from '../../../src/application/services/cost.service.js';
 import { CreateGenerationJobUseCase } from '../../../src/application/use-cases/generation/create-generation-job.use-case.js';
-import { GenerationQueueProducer, createRedisConnection, loadBullMQClasses } from '../../../src/infrastructure/queue/bullmq-runtime.js';
+import {
+  CLEANUP_QUEUE_NAME,
+  GENERATION_DLQ_NAME,
+  GenerationQueueProducer,
+  cleanupBullMQJobId,
+  createBullMQQueue,
+  createRedisConnection,
+  loadBullMQClasses
+} from '../../../src/infrastructure/queue/bullmq-runtime.js';
 import { GenerationQueueWorkerRuntime } from '../../../src/infrastructure/queue/generation-worker-runtime.js';
+import { replayGenerationDlq } from '../../../scripts/replay-generation-dlq.js';
 
 const hasRedis = typeof process.env.REDIS_URL === 'string' && process.env.REDIS_URL.trim() !== '';
 const runIntegration = hasTestDatabase() && hasRedis;
@@ -202,6 +211,37 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
     throw new Error('Timed out waiting for database state');
   }
 
+  async function waitForDlqJob(runtimeConfig, jobId) {
+    const handle = await createBullMQQueue(GENERATION_DLQ_NAME, runtimeConfig);
+    try {
+      await waitUntil(async () => Boolean(await handle.queue.getJob(`dlq-${jobId}`)));
+    } finally {
+      await handle.queue.close().catch(() => {});
+      await handle.connection.quit().catch(() => handle.connection.disconnect());
+    }
+  }
+
+  async function removeDlqJob(runtimeConfig, jobId) {
+    const handle = await createBullMQQueue(GENERATION_DLQ_NAME, runtimeConfig);
+    try {
+      const job = await handle.queue.getJob(`dlq-${jobId}`);
+      await job?.remove().catch(() => {});
+    } finally {
+      await handle.queue.close().catch(() => {});
+      await handle.connection.quit().catch(() => handle.connection.disconnect());
+    }
+  }
+
+  async function dlqJobExists(runtimeConfig, jobId) {
+    const handle = await createBullMQQueue(GENERATION_DLQ_NAME, runtimeConfig);
+    try {
+      return Boolean(await handle.queue.getJob(`dlq-${jobId}`));
+    } finally {
+      await handle.queue.close().catch(() => {});
+      await handle.connection.quit().catch(() => handle.connection.disconnect());
+    }
+  }
+
   it('does not POST again when the crash occurs after provider creation', async () => {
     const fixture = await createJob();
     let createCalls = 0;
@@ -332,6 +372,156 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
     }
   }, 15_000);
 
+  it('replays a normal DLQ entry by polling the persisted prediction', async () => {
+    const fixture = await createJob();
+    let createCalls = 0;
+    let pollCalls = 0;
+    const worker = makeWorker({
+      generationJobRepository: new PostgresGenerationJobRepository(prisma),
+      provider: {
+        createPrediction: async () => ({ providerPredictionId: `pred-${++createCalls}` }),
+        pollPrediction: async () => {
+          pollCalls += 1;
+          if (pollCalls <= 2) throw new ProviderError('provider unavailable', { code: 'PROVIDER_NETWORK' });
+          return { imageUrl: 'https://external.test/result.png' };
+        }
+      }
+    });
+    const prefix = `t08-replay-normal-${randomUUID()}`;
+    const { runtime, queueProducer, runtimeConfig } = await startRuntime({ worker, prefix });
+    try {
+      await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
+      await waitForDlqJob(runtimeConfig, fixture.jobId);
+      const replay = await replayGenerationDlq({ sourceJobId: fixture.jobId, config: runtimeConfig, prisma });
+      expect(replay.mode).toBe('polling');
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.status === 'COMPLETED');
+      expect(createCalls).toBe(1);
+      expect(pollCalls).toBe(3);
+      expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(false);
+    } finally {
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
+
+  it('rejects an ambiguous DLQ replay without an explicit operator decision', async () => {
+    const fixture = await createJob();
+    class CrashAfterPostRepository extends PostgresGenerationJobRepository {
+      async setProviderPredictionId() {
+        throw new Error('simulated database crash after POST');
+      }
+    }
+    const worker = makeWorker({
+      generationJobRepository: new CrashAfterPostRepository(prisma),
+      provider: {
+        createPrediction: async () => ({ providerPredictionId: 'pred-ambiguous-replay' }),
+        pollPrediction: async () => ({ imageUrl: 'https://external.test/result.png' })
+      }
+    });
+    const prefix = `t08-replay-ambiguous-${randomUUID()}`;
+    const { runtime, queueProducer, runtimeConfig } = await startRuntime({ worker, prefix });
+    try {
+      await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
+      await waitForDlqJob(runtimeConfig, fixture.jobId);
+      await expect(replayGenerationDlq({ sourceJobId: fixture.jobId, config: runtimeConfig, prisma }))
+        .rejects.toThrow('Ambiguous replay');
+      expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(true);
+    } finally {
+      await removeDlqJob(runtimeConfig, fixture.jobId);
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
+
+  it('replays an ambiguous DLQ entry with a provider id using polling only', async () => {
+    const fixture = await createJob();
+    let createCalls = 0;
+    let pollCalls = 0;
+    class CrashAfterPostRepository extends PostgresGenerationJobRepository {
+      async setProviderPredictionId() {
+        throw new Error('simulated database crash after POST');
+      }
+    }
+    const worker = makeWorker({
+      generationJobRepository: new CrashAfterPostRepository(prisma),
+      provider: {
+        createPrediction: async () => {
+          createCalls += 1;
+          return { providerPredictionId: 'pred-operator' };
+        },
+        pollPrediction: async () => {
+          pollCalls += 1;
+          return { imageUrl: 'https://external.test/result.png' };
+        }
+      }
+    });
+    const prefix = `t08-replay-polling-${randomUUID()}`;
+    const { runtime, queueProducer, runtimeConfig } = await startRuntime({ worker, prefix });
+    try {
+      await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
+      await waitForDlqJob(runtimeConfig, fixture.jobId);
+      const replay = await replayGenerationDlq({
+        sourceJobId: fixture.jobId,
+        providerPredictionId: 'pred-operator',
+        config: runtimeConfig,
+        prisma
+      });
+      expect(replay.mode).toBe('polling');
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.status === 'COMPLETED');
+      expect(createCalls).toBe(1);
+      expect(pollCalls).toBe(1);
+      expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(false);
+    } finally {
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
+
+  it('replays an ambiguous DLQ entry with confirmation for a new creation', async () => {
+    const fixture = await createJob();
+    let createCalls = 0;
+    let crashOnProviderPersistence = true;
+    class CrashOnceRepository extends PostgresGenerationJobRepository {
+      async setProviderPredictionId(...args) {
+        if (crashOnProviderPersistence) {
+          crashOnProviderPersistence = false;
+          throw new Error('simulated database crash after POST');
+        }
+        return super.setProviderPredictionId(...args);
+      }
+    }
+    const worker = makeWorker({
+      generationJobRepository: new CrashOnceRepository(prisma),
+      provider: {
+        createPrediction: async () => ({ providerPredictionId: `pred-confirmed-${++createCalls}` }),
+        pollPrediction: async () => ({ imageUrl: 'https://external.test/result.png' })
+      }
+    });
+    const prefix = `t08-replay-create-${randomUUID()}`;
+    const { runtime, queueProducer, runtimeConfig } = await startRuntime({ worker, prefix });
+    try {
+      await enqueueAndWait(queueProducer, prefix, fixture.jobId, 2);
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.currentStep === 'dead_letter');
+      await waitForDlqJob(runtimeConfig, fixture.jobId);
+      const replay = await replayGenerationDlq({
+        sourceJobId: fixture.jobId,
+        confirmNotCreated: true,
+        config: runtimeConfig,
+        prisma
+      });
+      expect(replay.mode).toBe('creation');
+      await waitUntil(async () => (await prisma.generationJob.findUnique({ where: { id: fixture.jobId } }))?.status === 'COMPLETED');
+      expect(createCalls).toBe(2);
+      expect(await dlqJobExists(runtimeConfig, fixture.jobId)).toBe(false);
+    } finally {
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
+
   it('refunds a terminal failure once and never refunds transient exhaustion', async () => {
     const fixture = await createJob({ balance: 0 });
     const worker = makeWorker({
@@ -458,6 +648,51 @@ describe.skipIf(!runIntegration)('T08 durable generation recovery (real PostgreS
     expect(await prisma.generationJob.count({ where: { userId: fixture.userId } })).toBe(1);
     expect(await prisma.ledgerEntry.count({ where: { userId: fixture.userId, type: 'SPEND' } })).toBe(0);
   });
+
+  it('processes cleanup through BullMQ with a safe deterministic job id', async () => {
+    const prefix = `t08-cleanup-queue-${randomUUID()}`;
+    const runtimeConfig = config(prefix);
+    const queueProducer = new GenerationQueueProducer({ config: runtimeConfig });
+    const taskRepository = new PostgresAssetCleanupTaskRepository(prisma);
+    let deleteCalls = 0;
+    const cleanupService = new AssetCleanupService({
+      assetService: {
+        deleteIfOwned: async () => {
+          deleteCalls += 1;
+          return { deleted: true };
+        }
+      },
+      taskRepository,
+      queue: queueProducer
+    });
+    const runtime = new GenerationQueueWorkerRuntime({
+      generationWorker: { processQueueJob: async () => {} },
+      generationJobRepository: new PostgresGenerationJobRepository(prisma),
+      assetCleanupService: cleanupService,
+      queueProducer,
+      config: runtimeConfig
+    });
+    await runtime.start();
+    try {
+      expect(cleanupBullMQJobId('task:with:colon')).toBe(cleanupBullMQJobId('task:with:colon'));
+      expect(cleanupBullMQJobId('task:with:colon')).not.toContain(':');
+      const task = await cleanupService.schedule({
+        key: `cleanup-${randomUUID()}.png`,
+        ownerId: 'cleanup-owner',
+        entity: 'sticker:t08'
+      });
+      await cleanupService.confirm(task);
+      await queueProducer.enqueueCleanup(task);
+      const cleanupQueue = await queueProducer.queue(CLEANUP_QUEUE_NAME);
+      const queued = await cleanupQueue.getJob(cleanupBullMQJobId(task.id));
+      expect(queued.id).toBe(cleanupBullMQJobId(task.id));
+      await waitUntil(async () => (await taskRepository.findById(task.id))?.status === 'completed');
+      expect(deleteCalls).toBe(1);
+    } finally {
+      await runtime.stop();
+      await queueProducer.close();
+    }
+  }, 20_000);
 
   it('claims cleanup atomically so concurrent workers do not lose the task', async () => {
     const repository = new PostgresAssetCleanupTaskRepository(prisma);

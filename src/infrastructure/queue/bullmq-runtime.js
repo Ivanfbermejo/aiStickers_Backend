@@ -7,6 +7,11 @@ export const CLEANUP_QUEUE_NAME = env.CLEANUP_QUEUE_NAME || 'asset-cleanup';
 // namespacing while the DLQ remains a separate durable queue.
 export const GENERATION_DLQ_NAME = `${GENERATION_QUEUE_NAME}-dlq`;
 
+export function cleanupBullMQJobId(taskId) {
+  const encodedTaskId = Buffer.from(String(taskId), 'utf8').toString('base64url');
+  return `cleanup-${encodedTaskId}`;
+}
+
 let bullmqModule;
 let redisModule;
 const require = createRequire(import.meta.url);
@@ -118,7 +123,7 @@ export class GenerationQueueProducer {
     const queue = await this.queue(CLEANUP_QUEUE_NAME);
     if (!queue) return { enqueued: false, disabled: true, taskId: task.id };
     const queued = await queue.add('asset-cleanup', { taskId: task.id }, {
-      jobId: `cleanup-${task.id}`,
+      jobId: cleanupBullMQJobId(task.id),
       attempts: this.config.GENERATION_QUEUE_ATTEMPTS,
       backoff: { type: 'exponential', delay: this.config.GENERATION_QUEUE_BACKOFF_MS },
       removeOnComplete: { age: 86400, count: 1000 },
@@ -130,6 +135,16 @@ export class GenerationQueueProducer {
   async enqueueDLQReplay(jobId) {
     const queue = await this.queue(GENERATION_QUEUE_NAME);
     if (!queue) throw new Error('Generation queue is disabled');
+    const existing = await queue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === 'failed') {
+        await existing.retry('failed');
+        return existing;
+      }
+      if (['waiting', 'delayed', 'paused', 'waiting-children'].includes(state)) return existing;
+      throw new Error(`Cannot replay generation job ${jobId} while it is ${state}`);
+    }
     return queue.add('generation', { jobId }, {
       jobId,
       attempts: this.config.GENERATION_QUEUE_ATTEMPTS,
