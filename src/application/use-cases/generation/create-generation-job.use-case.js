@@ -6,11 +6,12 @@ import { GenerationJob } from '../../../domain/entities/generation-job.entity.js
  * Validates balance, creates a sticker and an async generation job, and returns immediately
  */
 export class CreateGenerationJobUseCase {
-  constructor({ generationJobRepository, stickerRepository, spendBalanceUseCase, generationQueue }) {
+  constructor({ generationJobRepository, stickerRepository, spendBalanceUseCase, generationQueue, unitOfWork }) {
     this.generationJobRepository = generationJobRepository;
     this.stickerRepository = stickerRepository;
     this.spendBalanceUseCase = spendBalanceUseCase;
     this.generationQueue = generationQueue;
+    this.unitOfWork = unitOfWork;
   }
 
   /**
@@ -52,43 +53,79 @@ export class CreateGenerationJobUseCase {
 
     const cost = 1;
 
-    const spendResult = await this.spendBalanceUseCase.execute({
-      userId,
-      amount: cost,
-      productId: `generation:${type}`
-    });
+    const createRecords = async (repos) => {
+      const spendResult = await this.spendBalanceUseCase.executeInTransaction({
+        repos,
+        userId,
+        amount: cost,
+        productId: `generation:${type}`
+      });
 
-    const sticker = Sticker.createFromGeneration({
-      userId,
-      packageId: packageId || null,
-      name: prompt?.substring(0, 30) || 'Generated Sticker',
-      prompt,
-      cost
-    });
-
-    await this.stickerRepository.save(sticker);
-
-    const job = GenerationJob.create({
-      userId,
-      type,
-      packageId: packageId || null,
-      stickerId: sticker.id,
-      input: {
-        objectKey: asset.key,
-        hash: asset.hash,
-        sizeBytes: asset.sizeBytes,
-        mimeType: asset.mimeType,
-        width: asset.width,
-        height: asset.height,
+      const sticker = Sticker.createFromGeneration({
+        userId,
+        packageId: packageId || null,
+        name: prompt?.substring(0, 30) || 'Generated Sticker',
         prompt,
-        styleId,
-        emoji
-      },
-      provider,
-      cost
-    });
+        cost
+      });
+      await repos.sticker.save(sticker);
 
-    await this.generationJobRepository.save(job);
+      const job = GenerationJob.create({
+        userId,
+        type,
+        packageId: packageId || null,
+        stickerId: sticker.id,
+        input: {
+          objectKey: asset.key,
+          hash: asset.hash,
+          sizeBytes: asset.sizeBytes,
+          mimeType: asset.mimeType,
+          width: asset.width,
+          height: asset.height,
+          prompt,
+          styleId,
+          emoji
+        },
+        provider,
+        cost
+      });
+      await repos.generationJob.save(job);
+      return { spendResult, sticker, job };
+    };
+
+    let records;
+    if (this.unitOfWork && typeof this.spendBalanceUseCase.executeInTransaction === 'function') {
+      // Debit, sticker and GenerationJob share one PostgreSQL transaction.
+      records = await this.unitOfWork.run(createRecords);
+    } else {
+      // Compatibility for development-only test doubles that predate the UoW.
+      const spendResult = await this.spendBalanceUseCase.execute({
+        userId,
+        amount: cost,
+        productId: `generation:${type}`
+      });
+      const sticker = Sticker.createFromGeneration({
+        userId,
+        packageId: packageId || null,
+        name: prompt?.substring(0, 30) || 'Generated Sticker',
+        prompt,
+        cost
+      });
+      await this.stickerRepository.save(sticker);
+      const job = GenerationJob.create({
+        userId,
+        type,
+        packageId: packageId || null,
+        stickerId: sticker.id,
+        input: { objectKey: asset.key, hash: asset.hash, sizeBytes: asset.sizeBytes, mimeType: asset.mimeType, width: asset.width, height: asset.height, prompt, styleId, emoji },
+        provider,
+        cost
+      });
+      await this.generationJobRepository.save(job);
+      records = { spendResult, sticker, job };
+    }
+
+    const { spendResult, sticker, job } = records;
 
     // The database row is the source of truth. If Redis is unavailable after
     // this commit, the worker reconciler will enqueue this same PostgreSQL ID.

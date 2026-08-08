@@ -26,6 +26,7 @@ export async function createRepositories() {
     const { PostgresStickerRepository } = await import('./postgres/postgres-sticker.repository.js');
     const { PostgresPackageRepository } = await import('./postgres/postgres-package.repository.js');
     const { PostgresGenerationJobRepository } = await import('./postgres/postgres-generation-job.repository.js');
+    const { PostgresAssetCleanupTaskRepository } = await import('./postgres/postgres-asset-cleanup-task.repository.js');
     const { PostgresSessionRepository } = await import('./postgres/postgres-session.repository.js');
 
     const repositories = {
@@ -36,6 +37,7 @@ export async function createRepositories() {
       sticker: new PostgresStickerRepository(),
       package: new PostgresPackageRepository(),
       generationJob: new PostgresGenerationJobRepository(),
+      assetCleanupTask: new PostgresAssetCleanupTaskRepository(),
       session: new PostgresSessionRepository()
     };
     repositories.unitOfWork = new PostgresUnitOfWork(repositories);

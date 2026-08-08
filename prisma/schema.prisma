@@ -323,3 +323,36 @@ model GenerationJob {
   @@index([status, lockedAt])
   @@map("generation_jobs")
 }
+
+enum AssetCleanupTaskStatus {
+  PENDING
+  CONFIRMED
+  QUEUED
+  PROCESSING
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
+// Durable deletion intent. It deliberately has no user/entity foreign key:
+// cleanup must remain executable after the deleted row is gone.
+model AssetCleanupTask {
+  id            String                 @id
+  key           String
+  ownerId       String
+  entity        String
+  status        AssetCleanupTaskStatus @default(PENDING)
+  attempts      Int                    @default(0)
+  confirmedAt   DateTime?
+  queuedAt      DateTime?
+  lockedAt      DateTime?
+  lastAttemptAt DateTime?
+  completedAt   DateTime?
+  lastError     String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([ownerId, key])
+  @@index([status, lockedAt, confirmedAt])
+  @@map("asset_cleanup_tasks")
+}

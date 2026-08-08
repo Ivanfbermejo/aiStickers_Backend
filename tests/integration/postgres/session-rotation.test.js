@@ -22,7 +22,7 @@ describe.skipIf(!hasTestDatabase())('Session rotation — real PostgreSQL (T03)'
     const dbUrl = getBaseDatabaseUrl();
     await migrateDeploy(dbUrl);
     prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
-    repos = { session: new PostgresSessionRepository() };
+    repos = { session: new PostgresSessionRepository(prisma) };
     sessionService = new SessionService({
       sessionRepository: repos.session,
       jwtService: new JwtService()

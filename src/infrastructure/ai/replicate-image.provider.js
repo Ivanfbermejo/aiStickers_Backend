@@ -9,7 +9,7 @@ import { ProviderError, providerHttpError } from './provider-error.js';
  * Generates sticker images from an image + prompt
  */
 export class ReplicateImageProvider extends ImageProvider {
-  async createPrediction(input) {
+  async createPrediction(input, { signal } = {}) {
     const { imageUrl, prompt } = input || {};
     if (!imageUrl) {
       throw new Error('imageUrl is required');
@@ -25,6 +25,7 @@ export class ReplicateImageProvider extends ImageProvider {
           Authorization: `Token ${env.REPLICATE_API_TOKEN}`,
           'Content-Type': 'application/json'
         },
+        signal,
         body: JSON.stringify({
           version: model,
           input: {
@@ -34,7 +35,10 @@ export class ReplicateImageProvider extends ImageProvider {
           }
         })
       });
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new ProviderError('Provider create request timed out', { code: 'PROVIDER_TIMEOUT' });
+      }
       throw new ProviderError('Provider create request failed', { code: 'PROVIDER_NETWORK' });
     }
     if (!res.ok) throw providerHttpError(res.status);
@@ -47,11 +51,12 @@ export class ReplicateImageProvider extends ImageProvider {
     };
   }
 
-  async pollPrediction(providerPredictionId, { timeoutMs = 180_000, intervalMs = 1500 } = {}) {
+  async pollPrediction(providerPredictionId, { timeoutMs = 180_000, intervalMs = 1500, signal } = {}) {
     const finalPred = await pollPrediction(
       `https://api.replicate.com/v1/predictions/${providerPredictionId}`,
       timeoutMs,
-      intervalMs
+      intervalMs,
+      { signal }
     );
 
     if (finalPred.status !== 'succeeded') {

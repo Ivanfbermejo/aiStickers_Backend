@@ -1,14 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** Durable object cleanup journal. Actual deletion runs in the worker. */
+/**
+ * Durable object cleanup coordinator. PostgreSQL is used by the application
+ * driver; the JSON journal remains only as a development/test fallback.
+ */
 export class AssetCleanupService {
-  constructor({ assetService, dataDir, queue }) {
+  constructor({ assetService, dataDir, queue, taskRepository, lockTimeoutMs = 5 * 60 * 1000 }) {
     this.assetService = assetService;
     this.queue = queue;
-    this.file = path.join(dataDir, 'asset-cleanup.json');
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    if (!fs.existsSync(this.file)) fs.writeFileSync(this.file, '{}');
+    this.taskRepository = taskRepository;
+    this.lockTimeoutMs = lockTimeoutMs;
+
+    if (!this.taskRepository) {
+      this.file = path.join(dataDir, 'asset-cleanup.json');
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      if (!fs.existsSync(this.file)) fs.writeFileSync(this.file, '{}');
+    }
   }
 
   async _read() {
@@ -22,6 +30,8 @@ export class AssetCleanupService {
   }
 
   async schedule({ key, ownerId, entity }) {
+    if (this.taskRepository) return this.taskRepository.schedule({ key, ownerId, entity });
+
     const id = `${ownerId}:${key}`;
     const entries = await this._read();
     entries[id] ||= { id, key, ownerId, entity, confirmed: false, attempts: 0, createdAt: new Date().toISOString() };
@@ -30,6 +40,8 @@ export class AssetCleanupService {
   }
 
   async confirm(task) {
+    if (this.taskRepository) return this.taskRepository.confirm(task);
+
     const entries = await this._read();
     const current = entries[task.id];
     if (!current) return;
@@ -39,24 +51,44 @@ export class AssetCleanupService {
   }
 
   async run(task) {
+    const current = this.taskRepository
+      ? await this.taskRepository.findById(task.id)
+      : (await this._read())[task.id];
+    if (current?.status === 'completed' || current?.status === 'cancelled') {
+      return { deleted: false, reason: 'already_terminal' };
+    }
+    if (!current || (!current.confirmed && current.status !== 'confirmed' && current.status !== 'queued')) {
+      return { deleted: false, reason: 'not_confirmed' };
+    }
+
     if (this.queue) {
-      const entries = await this._read();
-      const current = entries[task.id];
-      if (!current?.confirmed) return { deleted: false, reason: 'not_confirmed' };
       try {
         const result = await this.queue.enqueueCleanup(current);
-        await this.markQueued(current);
+        if (result.enqueued) await this.markQueued(current);
         return { queued: true, ...result };
       } catch (error) {
-        // Leave the confirmed journal row intact. The durable reconciler will
-        // enqueue it after Redis returns.
+        // Keep the confirmed/queued row. The reconciler will retry after Redis
+        // becomes available.
         throw error;
       }
     }
-    return this.process(task);
+    return this.process(current);
   }
 
   async process(task) {
+    if (this.taskRepository) {
+      const claimed = await this.taskRepository.claim(task.id, this.lockTimeoutMs);
+      if (!claimed) return { deleted: false, reason: 'claimed_by_other_worker' };
+      try {
+        const result = await this.assetService.deleteIfOwned(claimed.key, claimed.ownerId);
+        await this.taskRepository.complete(claimed);
+        return result;
+      } catch (error) {
+        await this.taskRepository.fail(claimed, error).catch(() => {});
+        throw error;
+      }
+    }
+
     const entries = await this._read();
     const current = entries[task.id];
     if (!current?.confirmed) return { deleted: false, reason: 'not_confirmed' };
@@ -78,6 +110,7 @@ export class AssetCleanupService {
   }
 
   async findConfirmedPending(limit = 100) {
+    if (this.taskRepository) return this.taskRepository.findConfirmedPending(limit);
     const entries = await this._read();
     return Object.values(entries)
       .filter(entry => entry.confirmed && !entry.queuedAt)
@@ -86,6 +119,7 @@ export class AssetCleanupService {
   }
 
   async markQueued(task) {
+    if (this.taskRepository) return this.taskRepository.markQueued(task);
     const entries = await this._read();
     if (entries[task.id]) {
       entries[task.id].queuedAt = new Date().toISOString();
@@ -94,6 +128,7 @@ export class AssetCleanupService {
   }
 
   async cancel(task) {
+    if (this.taskRepository) return this.taskRepository.cancel(task);
     const entries = await this._read();
     delete entries[task.id];
     await this._write(entries);

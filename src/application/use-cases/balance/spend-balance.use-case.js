@@ -29,32 +29,46 @@ export class SpendBalanceUseCase {
       throw new Error('Amount mismatch: client-provided amounts are not trusted');
     }
 
-    return this.unitOfWork.run(async (repos) => {
-      const balance = await repos.balance.findByUserId(userId);
-      if (!balance) {
-        throw new Error('User balance not found');
-      }
-      if (!balance.hasEnough(cost)) {
-        throw new Error('Insufficient balance');
-      }
+    return this.unitOfWork.run((repos) => this.executeInTransaction({
+      repos,
+      userId,
+      productId,
+      amount,
+      cost
+    }));
+  }
 
-      balance.spend(cost);
-      await repos.balance.save(balance);
+  /** Execute the debit using repositories already bound to one DB tx. */
+  async executeInTransaction({ repos, userId, productId, amount, cost }) {
+    const resolvedCost = cost ?? this.costService.getCost(productId);
+    if (amount !== undefined && amount !== resolvedCost) {
+      throw new Error('Amount mismatch: client-provided amounts are not trusted');
+    }
 
-      const transaction = Transaction.createSpend({
-        userId,
-        amount: cost,
-        productId,
-        balanceAfter: balance.stickerDollars
-      });
-      await repos.transaction.save(transaction);
+    const balance = await repos.balance.findByUserId(userId);
+    if (!balance) {
+      throw new Error('User balance not found');
+    }
+    if (!balance.hasEnough(resolvedCost)) {
+      throw new Error('Insufficient balance');
+    }
 
-      return {
-        success: true,
-        amount: cost,
-        newBalance: balance.stickerDollars,
-        transactionId: transaction.id
-      };
+    balance.spend(resolvedCost);
+    await repos.balance.save(balance);
+
+    const transaction = Transaction.createSpend({
+      userId,
+      amount: resolvedCost,
+      productId,
+      balanceAfter: balance.stickerDollars
     });
+    await repos.transaction.save(transaction);
+
+    return {
+      success: true,
+      amount: resolvedCost,
+      newBalance: balance.stickerDollars,
+      transactionId: transaction.id
+    };
   }
 }

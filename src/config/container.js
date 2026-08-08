@@ -65,7 +65,8 @@ export class Container {
     this.services.assetCleanup = new AssetCleanupService({
       assetService: this.services.asset,
       dataDir: env.DATA_DIR,
-      queue: this.services.generationQueue
+      queue: this.services.generationQueue,
+      taskRepository: this.repositories.assetCleanupTask
     });
 
     // Services (Infrastructure)
@@ -127,7 +128,8 @@ export class Container {
       generationJobRepository: this.repositories.generationJob,
       stickerRepository: this.repositories.sticker,
       spendBalanceUseCase: this.useCases.spendBalance,
-      generationQueue: this.services.generationQueue
+      generationQueue: this.services.generationQueue,
+      unitOfWork: this.repositories.unitOfWork
     });
 
     this.useCases.getGenerationJob = new GetGenerationJobUseCase({

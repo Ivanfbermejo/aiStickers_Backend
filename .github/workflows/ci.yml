@@ -24,6 +24,9 @@ env:
   # T05A: real PostgreSQL for schema/migration tests (tests/integration/postgres).
   # PERSISTENCE_DRIVER stays 'json' for the app itself; only these tests use it.
   DATABASE_URL: postgresql://aistickers:aistickers_ci_password@localhost:5432/aistickers_test
+  T08_DATABASE_URL: postgresql://aistickers:aistickers_ci_password@localhost:5432/aistickers_t08_test
+  REDIS_URL: redis://localhost:6379
+  GENERATION_QUEUE_ENABLED: "true"
 
 jobs:
   build:
@@ -39,6 +42,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U aistickers -d aistickers_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -75,6 +87,9 @@ jobs:
 
       - name: Syntax check
         run: node --check index.js
+
+      - name: Prepare isolated T08 database
+        run: createdb --host=localhost --username=aistickers aistickers_t08_test
 
       - name: Run tests
         run: npm test

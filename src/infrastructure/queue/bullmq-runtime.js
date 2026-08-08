@@ -3,7 +3,9 @@ import { createRequire } from 'node:module';
 
 export const GENERATION_QUEUE_NAME = env.GENERATION_QUEUE_NAME || 'generation';
 export const CLEANUP_QUEUE_NAME = env.CLEANUP_QUEUE_NAME || 'asset-cleanup';
-export const GENERATION_DLQ_NAME = `${GENERATION_QUEUE_NAME}:dlq`;
+// BullMQ queue names cannot contain ':'. The prefix still supplies Redis key
+// namespacing while the DLQ remains a separate durable queue.
+export const GENERATION_DLQ_NAME = `${GENERATION_QUEUE_NAME}-dlq`;
 
 let bullmqModule;
 let redisModule;
@@ -116,7 +118,7 @@ export class GenerationQueueProducer {
     const queue = await this.queue(CLEANUP_QUEUE_NAME);
     if (!queue) return { enqueued: false, disabled: true, taskId: task.id };
     const queued = await queue.add('asset-cleanup', { taskId: task.id }, {
-      jobId: `cleanup:${task.id}`,
+      jobId: `cleanup-${task.id}`,
       attempts: this.config.GENERATION_QUEUE_ATTEMPTS,
       backoff: { type: 'exponential', delay: this.config.GENERATION_QUEUE_BACKOFF_MS },
       removeOnComplete: { age: 86400, count: 1000 },
@@ -155,9 +157,35 @@ export class GenerationQueueProducer {
   }
 
   async getJobCounts() {
-    const queue = await this.queue(GENERATION_QUEUE_NAME);
-    if (!queue) return {};
-    return queue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed', 'paused');
+    return this.getQueueCounts(GENERATION_QUEUE_NAME);
+  }
+
+  async getQueueCounts(name) {
+    const queue = await this.queue(name);
+    if (!queue) return { queued: 0, active: 0, failed: 0, stalled: 0 };
+    const counts = await queue.getJobCounts(
+      'wait',
+      'active',
+      'failed',
+      'delayed',
+      'paused',
+      'waiting-children'
+    );
+    return {
+      queued: (counts.wait || 0) + (counts.delayed || 0) + (counts.paused || 0) + (counts['waiting-children'] || 0),
+      active: counts.active || 0,
+      failed: counts.failed || 0,
+      stalled: 0,
+      raw: counts
+    };
+  }
+
+  async getMetrics() {
+    const [generation, cleanup] = await Promise.all([
+      this.getQueueCounts(GENERATION_QUEUE_NAME),
+      this.getQueueCounts(CLEANUP_QUEUE_NAME)
+    ]);
+    return { ...generation, cleanup };
   }
 
   async close() {

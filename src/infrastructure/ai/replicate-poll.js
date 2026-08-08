@@ -5,16 +5,40 @@ import { ProviderError, providerHttpError } from './provider-error.js';
 /**
  * Polls a Replicate prediction until completion or timeout
  */
-export async function pollPrediction(predictionUrl, timeout = 55_000, interval = 1500) {
+function abortableDelay(ms, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(new ProviderError('Provider polling timed out', { code: 'PROVIDER_TIMEOUT' }));
+  }
+  return new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => signal?.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new ProviderError('Provider polling timed out', { code: 'PROVIDER_TIMEOUT' }));
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+export async function pollPrediction(predictionUrl, timeout = 55_000, interval = 1500, { signal } = {}) {
   const t0 = Date.now();
 
   while (true) {
     let res;
     try {
       res = await fetch(predictionUrl, {
-        headers: { Authorization: `Token ${env.REPLICATE_API_TOKEN}` }
+        headers: { Authorization: `Token ${env.REPLICATE_API_TOKEN}` },
+        signal
       });
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new ProviderError('Provider polling timed out', { code: 'PROVIDER_TIMEOUT' });
+      }
       throw new ProviderError('Provider polling request failed', { code: 'PROVIDER_NETWORK' });
     }
     if (!res.ok) throw providerHttpError(res.status);
@@ -32,6 +56,6 @@ export async function pollPrediction(predictionUrl, timeout = 55_000, interval =
       throw new ProviderError('Provider polling timed out', { code: 'PROVIDER_TIMEOUT' });
     }
 
-    await new Promise(r => setTimeout(r, interval));
+    await abortableDelay(interval, signal);
   }
 }

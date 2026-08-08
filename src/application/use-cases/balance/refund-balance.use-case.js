@@ -45,32 +45,47 @@ export class RefundBalanceUseCase {
       };
     }
 
-    return this.unitOfWork.run(async (repos) => {
-      const balance = await repos.balance.findByUserId(userId);
-      if (!balance) {
-        throw new Error('User balance not found');
-      }
+    try {
+      return await this.unitOfWork.run(async (repos) => {
+        const balance = await repos.balance.findByUserId(userId);
+        if (!balance) {
+          throw new Error('User balance not found');
+        }
 
-      balance.refund(amount);
-      await repos.balance.save(balance);
+        balance.refund(amount);
+        await repos.balance.save(balance);
 
-      const transaction = Transaction.createRefund({
-        userId,
-        amount,
-        productId,
-        balanceAfter: balance.stickerDollars,
-        metadata: { reason, idempotencyKey }
+        const transaction = Transaction.createRefund({
+          userId,
+          amount,
+          productId,
+          balanceAfter: balance.stickerDollars,
+          metadata: { reason, idempotencyKey }
+        });
+        transaction.providerTransactionId = idempotencyKey;
+        await repos.transaction.save(transaction);
+
+        return {
+          success: true,
+          amount,
+          newBalance: balance.stickerDollars,
+          transactionId: transaction.id,
+          isDuplicate: false
+        };
       });
-      transaction.providerTransactionId = idempotencyKey;
-      await repos.transaction.save(transaction);
-
+    } catch (error) {
+      // Two terminal workers may race between the pre-check and the
+      // transaction. The unique ledger key is the final idempotency barrier.
+      const committed = await this.transactionRepository.findByProviderTransactionId(idempotencyKey);
+      if (!committed) throw error;
+      const balance = await this.balanceRepository.findByUserId(userId);
       return {
         success: true,
-        amount,
-        newBalance: balance.stickerDollars,
-        transactionId: transaction.id,
-        isDuplicate: false
+        amount: committed.amount,
+        newBalance: balance?.stickerDollars || 0,
+        transactionId: committed.id,
+        isDuplicate: true
       };
-    });
+    }
   }
 }

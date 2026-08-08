@@ -16,10 +16,10 @@ export class UnitOfWork {
 }
 
 export class PostgresUnitOfWork extends UnitOfWork {
-  constructor(repositories) {
+  constructor(repositories, { prismaClient } = {}) {
     super();
-    this.prisma = getPrismaClient();
     this.repositories = repositories;
+    this.prisma = prismaClient || Object.values(repositories).find(repository => repository?.prisma)?.prisma || getPrismaClient();
   }
 
   async run(callback) {

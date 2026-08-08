@@ -14,8 +14,8 @@ if (!sourceJobId) {
 const dlq = await createBullMQQueue(GENERATION_DLQ_NAME, env);
 const generation = await createBullMQQueue(GENERATION_QUEUE_NAME, env);
 try {
-  const dlqJob = await dlq.queue.getJob(`dlq:${sourceJobId}`);
-  if (!dlqJob) throw new Error(`DLQ job not found: dlq:${sourceJobId}`);
+  const dlqJob = await dlq.queue.getJob(`dlq-${sourceJobId}`);
+  if (!dlqJob) throw new Error(`DLQ job not found: dlq-${sourceJobId}`);
 
   await generation.queue.add('generation', { jobId: sourceJobId }, {
     jobId: sourceJobId,

@@ -155,7 +155,15 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     const cutoff = new Date(Date.now() - lockTimeoutMs);
     const [raw] = await prisma.$queryRaw`
       UPDATE "generation_jobs"
-      SET status = 'PROCESSING', "currentStep" = 'processing', "lockedAt" = NOW(),
+      SET status = 'PROCESSING',
+          "currentStep" = CASE
+            WHEN "providerPredictionId" IS NULL AND "currentStep" IN (
+              'submitting_provider', 'creating_image_prediction', 'creating_video_prediction'
+            )
+              THEN "currentStep"
+            ELSE 'processing'
+          END,
+          "lockedAt" = NOW(),
           "attempts" = "attempts" + 1, "updatedAt" = NOW()
       WHERE id = ${id}
         AND status IN ('QUEUED', 'PROCESSING')
@@ -163,6 +171,47 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
       RETURNING *
     `;
     return raw ? toJob(raw) : null;
+  }
+
+  /**
+   * Cost-protection CAS. SUBMITTING is durable before the external POST; only
+   * the worker that wins this update may issue that POST.
+   */
+  async claimProviderSubmission(id, tx) {
+    const prisma = this._getPrisma(tx);
+    const [raw] = await prisma.$queryRaw`
+      UPDATE "generation_jobs"
+      SET "currentStep" = 'submitting_provider',
+          "progress" = GREATEST("progress", 30),
+          "lockedAt" = NOW(),
+          "updatedAt" = NOW()
+      WHERE id = ${id}
+        AND status = 'PROCESSING'
+        AND "providerPredictionId" IS NULL
+        AND "currentStep" IN ('processing', 'generating_image', 'replayed', 'retrying', 'queued')
+      RETURNING *
+    `;
+    return raw ? toJob(raw) : null;
+  }
+
+  /** Persist the provider ID with a second CAS before polling starts. */
+  async setProviderPredictionId(id, providerPredictionId, tx) {
+    const prisma = this._getPrisma(tx);
+    const updated = await prisma.generationJob.updateMany({
+      where: {
+        id,
+        status: 'PROCESSING',
+        currentStep: 'submitting_provider',
+        providerPredictionId: null
+      },
+      data: { providerPredictionId, currentStep: 'polling_provider', progress: 50 }
+    });
+    if (updated.count === 0) {
+      const current = await prisma.generationJob.findUnique({ where: { id } });
+      if (current?.providerPredictionId === providerPredictionId) return toJob(current);
+      throw new Error(`Generation job ${id} provider prediction CAS failed`);
+    }
+    return this.findById(id, tx);
   }
 
   /** Compatibility helper for repository contract tests and operators. */

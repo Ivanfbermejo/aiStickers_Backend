@@ -17,6 +17,12 @@ function asTerminalError(message, code) {
   return new ProviderError(message, { code, terminal: true, transient: false });
 }
 
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw new ProviderError('Generation provider timed out', { code: 'PROVIDER_TIMEOUT' });
+  }
+}
+
 /**
  * Durable generation processor. BullMQ owns delivery/retry; this class owns
  * the PostgreSQL state machine and is intentionally independent of HTTP.
@@ -44,13 +50,16 @@ export class GenerationJobWorker {
   }
 
   /** Process a BullMQ delivery after claiming the matching PostgreSQL row. */
-  async processQueueJob(queueJob) {
+  async processQueueJob(queueJob, { signal } = {}) {
     const jobId = queueJob?.data?.jobId || queueJob?.jobId || queueJob?.id;
     if (!jobId) throw asTerminalError('Generation queue payload has no jobId', 'GENERATION_INPUT');
 
     const current = await this.generationJobRepository.findById(jobId);
     if (!current) return { skipped: true, reason: 'missing_job' };
     if (current.status === 'failed' && current.currentStep === 'dead_letter') {
+      if (!current.providerPredictionId && current.errorMessage?.toLowerCase().includes('ambiguous')) {
+        return { skipped: true, reason: 'awaiting_provider_reconciliation', jobId };
+      }
       current.requeueFromDlq();
       await this.generationJobRepository.update(current);
     }
@@ -68,14 +77,14 @@ export class GenerationJobWorker {
       if (!claimed) return { skipped: true, reason: 'claimed_by_other_worker' };
     }
 
-    return this.processJob(claimed);
+    return this.processJob(claimed, { signal });
   }
 
   /**
    * Process one job. Provider creation and provider polling are separate: the
    * prediction ID is committed before any polling request is made.
    */
-  async processJob(job) {
+  async processJob(job, { signal } = {}) {
     if (job.isDone()) return { skipped: true, reason: 'already_terminal' };
 
     try {
@@ -99,21 +108,42 @@ export class GenerationJobWorker {
       if (job.providerPredictionId) {
         job.updateStep('polling_provider', Math.max(job.progress, 50));
         await this.generationJobRepository.update(job);
-        result = await this.pollProvider(provider, job.providerPredictionId);
+        result = await this.pollProvider(provider, job.providerPredictionId, { signal });
       } else if (typeof provider.createPrediction === 'function') {
-        job.updateStep(job.type === 'image_sticker' ? 'creating_image_prediction' : 'creating_video_prediction', 30);
-        await this.generationJobRepository.update(job);
-
-        const created = await this.createProviderPrediction(provider, providerInput);
-        if (!created?.providerPredictionId) {
-          throw asTerminalError('Provider returned no prediction id', 'PROVIDER_INVALID_RESPONSE');
+        // A worker that observes SUBMITTING after a restart cannot know whether
+        // Replicate accepted the POST. It must never issue that POST again.
+        if (job.currentStep === 'submitting_provider' || job.currentStep.startsWith('creating_')) {
+          return this.moveToDlq(job.id, 'Provider submission outcome is ambiguous');
         }
 
-        // This write is the cost-protection boundary. A retry must observe this
-        // ID and only poll; it must never call createPrediction again.
-        job.setProviderPredictionId(created.providerPredictionId);
-        await this.generationJobRepository.update(job);
-        result = await this.pollProvider(provider, created.providerPredictionId);
+        const submission = await this.claimProviderSubmission(job);
+        if (!submission) {
+          const latest = await this.generationJobRepository.findById(job.id);
+          if (latest?.providerPredictionId) {
+            job = latest;
+            result = await this.pollProvider(provider, job.providerPredictionId, { signal });
+          } else {
+            return this.moveToDlq(job.id, 'Provider submission claim was lost');
+          }
+        } else {
+          job = submission;
+          const created = await this.createProviderPrediction(provider, providerInput, { signal });
+          if (!created?.providerPredictionId) {
+            // A successful POST without a usable ID is still ambiguous: the
+            // provider may have created work that the response failed to
+            // describe. Keep the job for manual/provider reconciliation.
+            throw new ProviderError('Provider returned no prediction id', {
+              code: 'PROVIDER_INVALID_RESPONSE',
+              terminal: false,
+              transient: false
+            });
+          }
+
+          // This write is the cost-protection boundary. A retry must observe this
+          // ID and only poll; it must never call createPrediction again.
+          job = await this.persistProviderPrediction(job, created.providerPredictionId);
+          result = await this.pollProvider(provider, created.providerPredictionId, { signal });
+        }
       } else {
         // Compatibility for test/fallback providers. Production Replicate
         // providers implement the durable create/poll split above.
@@ -135,10 +165,12 @@ export class GenerationJobWorker {
 
       // The external URL is short-lived. Copy and verify it in private object
       // storage before either the sticker or job becomes completed.
+      throwIfAborted(signal);
       const asset = await this.assetService.copyExternalToStorage({
         url: assetUrl,
         ownerId: job.userId,
-        idempotencyKey: `generation-result:${job.id}`
+        idempotencyKey: `generation-result:${job.id}`,
+        signal
       });
       sticker.markAsStoredAsset(asset);
       await this.stickerRepository.update(sticker);
@@ -162,21 +194,52 @@ export class GenerationJobWorker {
 
       // BullMQ will redeliver this same job. Reset the DB row so a second worker
       // can claim it after a crash/stall, without refunding a transient failure.
+      if (!job.providerPredictionId && job.currentStep === 'submitting_provider') {
+        // The POST may have succeeded even when the response or the following
+        // DB write was lost. Automatic replay is forbidden without a provider ID.
+        const latest = await this.generationJobRepository.findById(job.id);
+        if (latest?.providerPredictionId) {
+          latest.markRetryable('retrying');
+          await this.generationJobRepository.update(latest);
+          throw error;
+        }
+        return this.moveToDlq(job.id, 'Provider submission outcome is ambiguous');
+      }
       job.markRetryable('retrying');
       await this.generationJobRepository.update(job);
       throw error;
     }
   }
 
-  async createProviderPrediction(provider, input) {
-    return provider.createPrediction(input);
+  async claimProviderSubmission(job) {
+    if (typeof this.generationJobRepository.claimProviderSubmission === 'function') {
+      return this.generationJobRepository.claimProviderSubmission(job.id);
+    }
+    job.updateStep('submitting_provider', 30);
+    await this.generationJobRepository.update(job);
+    return job;
   }
 
-  async pollProvider(provider, predictionId) {
+  async persistProviderPrediction(job, providerPredictionId) {
+    if (typeof this.generationJobRepository.setProviderPredictionId === 'function') {
+      return this.generationJobRepository.setProviderPredictionId(job.id, providerPredictionId);
+    }
+    job.setProviderPredictionId(providerPredictionId);
+    await this.generationJobRepository.update(job);
+    return job;
+  }
+
+  async createProviderPrediction(provider, input, { signal } = {}) {
+    throwIfAborted(signal);
+    return provider.createPrediction(input, { signal });
+  }
+
+  async pollProvider(provider, predictionId, { signal } = {}) {
+    throwIfAborted(signal);
     if (typeof provider.pollPrediction !== 'function') {
       throw asTerminalError('Provider cannot poll durable predictions', 'PROVIDER_UNSUPPORTED');
     }
-    return provider.pollPrediction(predictionId, { timeoutMs: this.queueTimeoutMs });
+    return provider.pollPrediction(predictionId, { timeoutMs: this.queueTimeoutMs, signal });
   }
 
   async failTerminal(job, error) {
@@ -205,10 +268,13 @@ export class GenerationJobWorker {
   }
 
   /** Mark a transient delivery exhausted without refunding it. */
-  async moveToDlq(jobId) {
+  async moveToDlq(jobId, reason = 'Generation is awaiting operator replay') {
     const job = await this.generationJobRepository.findById(jobId);
-    if (!job || job.isDone()) return;
-    job.markFailed('Generation is awaiting operator replay', 'dead_letter');
+    if (!job || (job.isDone() && job.currentStep !== 'dead_letter')) {
+      return { deadLettered: false, jobId };
+    }
+    job.markFailed(reason, 'dead_letter');
     await this.generationJobRepository.update(job);
+    return { deadLettered: true, jobId, reason };
   }
 }

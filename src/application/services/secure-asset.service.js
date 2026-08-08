@@ -240,9 +240,12 @@ export async function validateUrlSafety(urlString, { allowlist = [] } = {}) {
   }
 }
 
-async function fetchWithLimits(urlString, { maxBytes, timeoutMs, maxRedirects, allowlist, redirectCount, fetchImpl }) {
+async function fetchWithLimits(urlString, { maxBytes, timeoutMs, maxRedirects, allowlist, redirectCount, fetchImpl, signal }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromParent = () => controller.abort();
+  signal?.addEventListener('abort', abortFromParent, { once: true });
+  if (signal?.aborted) controller.abort();
   let response;
 
   try {
@@ -259,6 +262,7 @@ async function fetchWithLimits(urlString, { maxBytes, timeoutMs, maxRedirects, a
     throw err;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', abortFromParent);
   }
 
   if (response.status >= 300 && response.status < 400) {
@@ -271,7 +275,7 @@ async function fetchWithLimits(urlString, { maxBytes, timeoutMs, maxRedirects, a
     }
     const nextUrl = new URL(location, urlString).href;
     await validateUrlSafety(nextUrl, { allowlist });
-    return fetchWithLimits(nextUrl, { maxBytes, timeoutMs, maxRedirects, allowlist, redirectCount: redirectCount + 1, fetchImpl });
+    return fetchWithLimits(nextUrl, { maxBytes, timeoutMs, maxRedirects, allowlist, redirectCount: redirectCount + 1, fetchImpl, signal });
   }
 
   if (!response.ok) {
@@ -318,7 +322,8 @@ export async function downloadSecureUrl(urlString, options = {}) {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxRedirects = DEFAULT_MAX_REDIRECTS,
     allowlist = [],
-    fetchImpl = fetch
+    fetchImpl = fetch,
+    signal
   } = options;
 
   await validateUrlSafety(urlString, { allowlist });
@@ -328,7 +333,8 @@ export async function downloadSecureUrl(urlString, options = {}) {
     maxRedirects,
     allowlist,
     redirectCount: 0,
-    fetchImpl
+    fetchImpl,
+    signal
   });
 }
 

@@ -32,23 +32,32 @@ function toSessionData(session) {
 }
 
 export class PostgresSessionRepository extends ISessionRepository {
+  constructor(prismaClient) {
+    super();
+    this.prisma = prismaClient;
+  }
+
+  _getPrisma() {
+    return this.prisma || getPrismaClient();
+  }
+
   async findById(id) {
-    const raw = await getPrismaClient().authSession.findUnique({ where: { id } });
+    const raw = await this._getPrisma().authSession.findUnique({ where: { id } });
     return toSession(raw);
   }
 
   async findByRefreshTokenHash(hash) {
-    const raw = await getPrismaClient().authSession.findUnique({ where: { refreshTokenHash: hash } });
+    const raw = await this._getPrisma().authSession.findUnique({ where: { refreshTokenHash: hash } });
     return toSession(raw);
   }
 
   async findByFamily(family) {
-    const rows = await getPrismaClient().authSession.findMany({ where: { family } });
+    const rows = await this._getPrisma().authSession.findMany({ where: { family } });
     return rows.map(toSession);
   }
 
   async save(session) {
-    const prisma = getPrismaClient();
+    const prisma = this._getPrisma();
     const data = toSessionData(session);
     await prisma.authSession.upsert({
       where: { id: session.id },
@@ -71,14 +80,14 @@ export class PostgresSessionRepository extends ISessionRepository {
   }
 
   async revokeFamily(family) {
-    await getPrismaClient().authSession.updateMany({
+    await this._getPrisma().authSession.updateMany({
       where: { family, revokedAt: null },
       data: { revokedAt: new Date() }
     });
   }
 
   async rotate(refreshTokenHash, candidate) {
-    const prisma = getPrismaClient();
+    const prisma = this._getPrisma();
 
     // Atomic rotation: claim the parent and insert the descendant in a single
     // transaction. If the claim fails (rotatedTo is no longer null, revoked or
