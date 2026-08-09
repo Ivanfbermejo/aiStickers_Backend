@@ -111,6 +111,25 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return rows.map(toJob);
   }
 
+  /**
+   * Serialize generation admission per user for the lifetime of the current
+   * PostgreSQL transaction, then count the jobs that consume an active slot.
+   */
+  async lockAndCountActiveByUserId(userId, tx) {
+    const prisma = this._getPrisma(tx);
+    await prisma.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`generation-active:${userId}`}, 0)
+      )
+    `;
+    return prisma.generationJob.count({
+      where: {
+        userId,
+        status: { in: ['QUEUED', 'PROCESSING'] }
+      }
+    });
+  }
+
   async findPending(tx) {
     const rows = await this._getPrisma(tx).generationJob.findMany({
       where: { status: 'QUEUED' },

@@ -285,7 +285,7 @@ export async function createApp() {
   app.get('/api/v1/stickers', requireHmac, requireUser, StickerController.getUserStickers);
   app.get('/api/v1/stickers/package/:packageId', requireHmac, requireUser, StickerController.getStickersByPackage);
   app.get('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.getStickerById);
-  app.post('/api/v1/stickers', requireHmac, requireUser, StickerController.createSticker);
+  app.post('/api/v1/stickers', requireHmac, requireUser, uploadRateLimit, StickerController.createSticker);
   app.put('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.updateSticker);
   app.delete('/api/v1/stickers/:id', requireHmac, requireUser, StickerController.deleteSticker);
 
@@ -303,7 +303,7 @@ export async function createApp() {
   // --- Telegram Sticker Packs (HMAC + User JWT required) ---
   if (env.ENABLE_TELEGRAM) {
     app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, exportRateLimit, TelegramController.exportPack);
-    app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, TelegramController.reconcilePack);
+    app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, exportRateLimit, TelegramController.reconcilePack);
     app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, statusRateLimit, TelegramController.getPackStatus);
   }
 

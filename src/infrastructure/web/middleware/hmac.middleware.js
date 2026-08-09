@@ -112,10 +112,16 @@ export class HmacMiddleware {
       }
 
       const redisSecurity = req.app.locals.redisSecurity;
+      // A future-dated signature remains valid until timestamp + window. Keep
+      // its nonce for that entire interval, not merely one window from now.
+      const nonceValiditySeconds = Math.max(
+        1,
+        Math.ceil(timestampNumber + env.SIG_WINDOW_SEC - Date.now() / 1000)
+      );
       const claimed = await redisSecurity.claimNonce({
         clientId: id,
         nonce,
-        windowSeconds: env.SIG_WINDOW_SEC
+        windowSeconds: nonceValiditySeconds
       });
       if (!claimed) {
         return res.status(401).json({ error: 'Replay detected' });

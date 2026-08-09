@@ -30,6 +30,7 @@ export class GenerationController {
    */
   static async create(req, res) {
     try {
+      const dependencies = req.app.locals.container || container;
       const userId = req.user?.sub;
       if (!userId) {
         return res.status(401).json({
@@ -71,7 +72,7 @@ export class GenerationController {
             await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
           }
           inputAsset = await resolveClientAsset({
-            assetService: container.services.asset,
+            assetService: dependencies.services.asset,
             objectKey,
             hash,
             reference: imageUrl,
@@ -86,7 +87,7 @@ export class GenerationController {
         }
       }
 
-      const result = await container.useCases.createGenerationJob.execute({
+      const result = await dependencies.useCases.createGenerationJob.execute({
         userId,
         type,
         asset: inputAsset,
@@ -104,6 +105,14 @@ export class GenerationController {
         return res.status(400).json({
           error: 'Insufficient balance',
           message: 'Need 1 StickerDollar to generate'
+        });
+      }
+
+      if (error.code === 'ACTIVE_GENERATION_LIMIT') {
+        res.set('Retry-After', String(error.retryAfterSeconds));
+        return res.status(429).json({
+          error: 'Too many requests',
+          message: 'Active generation limit exceeded'
         });
       }
 

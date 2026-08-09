@@ -22,6 +22,7 @@ export class AiController {
    */
   static async processImage(req, res) {
     try {
+      const dependencies = req.app.locals.container || container;
       const { prompt, packageId, objectKey, hash } = req.body || {};
 
       if (!req.file && !req.body?.imageUrl && !objectKey) {
@@ -69,7 +70,7 @@ export class AiController {
       let inputAsset;
       try {
         inputAsset = await resolveClientAsset({
-          assetService: container.services.asset,
+          assetService: dependencies.services.asset,
           objectKey,
           hash,
           reference: imageUrl,
@@ -87,7 +88,7 @@ export class AiController {
 
       const finalPrompt = (prompt?.trim()) || 'clean sticker with white border, high contrast, professional quality, preserving exact facial features, face shape, eye color, hair style and color, skin tone, and distinctive characteristics. Keep the face perfectly recognizable and faithful to the original person.';
 
-      const result = await container.useCases.createGenerationJob.execute({
+      const result = await dependencies.useCases.createGenerationJob.execute({
         userId,
         type: 'image_sticker',
         asset: inputAsset,
@@ -104,6 +105,14 @@ export class AiController {
         return res.status(400).json({
           error: 'Insufficient balance',
           message: 'Need 1 StickerDollar to generate a sticker'
+        });
+      }
+
+      if (error.code === 'ACTIVE_GENERATION_LIMIT') {
+        res.set('Retry-After', String(error.retryAfterSeconds));
+        return res.status(429).json({
+          error: 'Too many requests',
+          message: 'Active generation limit exceeded'
         });
       }
 

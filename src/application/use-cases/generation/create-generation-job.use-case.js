@@ -1,17 +1,36 @@
 import { Sticker } from '../../../domain/entities/sticker.entity.js';
 import { GenerationJob } from '../../../domain/entities/generation-job.entity.js';
 
+export class ActiveGenerationLimitError extends Error {
+  constructor(retryAfterSeconds = 60) {
+    super('Active generation limit exceeded');
+    this.name = 'ActiveGenerationLimitError';
+    this.code = 'ACTIVE_GENERATION_LIMIT';
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
 /**
  * Create GenerationJob Use Case
  * Validates balance, creates a sticker and an async generation job, and returns immediately
  */
 export class CreateGenerationJobUseCase {
-  constructor({ generationJobRepository, stickerRepository, spendBalanceUseCase, generationQueue, unitOfWork }) {
+  constructor({
+    generationJobRepository,
+    stickerRepository,
+    spendBalanceUseCase,
+    generationQueue,
+    unitOfWork,
+    activeGenerationLimit = 2,
+    activeGenerationRetryAfterSeconds = 60
+  }) {
     this.generationJobRepository = generationJobRepository;
     this.stickerRepository = stickerRepository;
     this.spendBalanceUseCase = spendBalanceUseCase;
     this.generationQueue = generationQueue;
     this.unitOfWork = unitOfWork;
+    this.activeGenerationLimit = activeGenerationLimit;
+    this.activeGenerationRetryAfterSeconds = activeGenerationRetryAfterSeconds;
   }
 
   /**
@@ -54,6 +73,13 @@ export class CreateGenerationJobUseCase {
     const cost = 1;
 
     const createRecords = async (repos) => {
+      if (typeof repos.generationJob.lockAndCountActiveByUserId === 'function') {
+        const activeCount = await repos.generationJob.lockAndCountActiveByUserId(userId);
+        if (activeCount >= this.activeGenerationLimit) {
+          throw new ActiveGenerationLimitError(this.activeGenerationRetryAfterSeconds);
+        }
+      }
+
       const spendResult = await this.spendBalanceUseCase.executeInTransaction({
         repos,
         userId,

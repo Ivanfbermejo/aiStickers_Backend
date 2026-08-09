@@ -129,7 +129,9 @@ export class Container {
       stickerRepository: this.repositories.sticker,
       spendBalanceUseCase: this.useCases.spendBalance,
       generationQueue: this.services.generationQueue,
-      unitOfWork: this.repositories.unitOfWork
+      unitOfWork: this.repositories.unitOfWork,
+      activeGenerationLimit: env.RATE_LIMIT_GENERATION_ACTIVE,
+      activeGenerationRetryAfterSeconds: env.RATE_LIMIT_WINDOW_SEC
     });
 
     this.useCases.getGenerationJob = new GetGenerationJobUseCase({
