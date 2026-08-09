@@ -141,6 +141,23 @@ function parsePositiveInt(value, defaultValue, name, maxValue = Number.MAX_SAFE_
   return n;
 }
 
+function parseTrustProxy(value) {
+  if (!value || value.trim() === '') {
+    return 0;
+  }
+
+  const normalized = value.trim();
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const networks = normalized.split(',').map(item => item.trim()).filter(Boolean);
+  if (networks.length === 0 || networks.some(item => /^(true|false)$/i.test(item))) {
+    throw new Error('TRUST_PROXY must be an explicit hop count or comma-separated network list');
+  }
+  return networks;
+}
+
 function parseRedisUrl(value) {
   const redisUrl = value || 'redis://127.0.0.1:6379';
   let parsed;
@@ -167,6 +184,7 @@ export function loadConfig(rawEnv = process.env) {
     NODE_ENV: nodeEnv,
     PORT: parsePort(rawEnv.PORT, 2002),
     DATA_DIR: rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
+    TRUST_PROXY: parseTrustProxy(rawEnv.TRUST_PROXY),
 
     // Persistence: JSON files by default; PostgreSQL is mandatory in production
     // (see validateEnv). Repositories still read/write JSON until T05B.
@@ -234,6 +252,17 @@ export function loadConfig(rawEnv = process.env) {
     REPLICATE_IMG2VID_MODEL: isProduction ? rawEnv.REPLICATE_IMG2VID_MODEL : (rawEnv.REPLICATE_IMG2VID_MODEL || 'bytedance/seedance-1-pro'),
 
     SIG_WINDOW_SEC: parseSigWindow(rawEnv.SIG_WINDOW_SEC, 300),
+    HMAC_LEGACY_V1_ENABLED: parseBooleanFlag(rawEnv.HMAC_LEGACY_V1_ENABLED, !isProduction),
+
+    RATE_LIMIT_WINDOW_SEC: parsePositiveInt(rawEnv.RATE_LIMIT_WINDOW_SEC, 60, 'RATE_LIMIT_WINDOW_SEC', 3600),
+    RATE_LIMIT_AUTH_GOOGLE_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_AUTH_GOOGLE_PER_MINUTE, 10, 'RATE_LIMIT_AUTH_GOOGLE_PER_MINUTE'),
+    RATE_LIMIT_AUTH_TOKEN_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_AUTH_TOKEN_PER_MINUTE, 20, 'RATE_LIMIT_AUTH_TOKEN_PER_MINUTE'),
+    RATE_LIMIT_PAYMENT_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_PAYMENT_PER_MINUTE, 10, 'RATE_LIMIT_PAYMENT_PER_MINUTE'),
+    RATE_LIMIT_GENERATION_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_GENERATION_PER_MINUTE, 5, 'RATE_LIMIT_GENERATION_PER_MINUTE'),
+    RATE_LIMIT_GENERATION_ACTIVE: parsePositiveInt(rawEnv.RATE_LIMIT_GENERATION_ACTIVE, 2, 'RATE_LIMIT_GENERATION_ACTIVE'),
+    RATE_LIMIT_UPLOAD_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_UPLOAD_PER_MINUTE, 10, 'RATE_LIMIT_UPLOAD_PER_MINUTE'),
+    RATE_LIMIT_EXPORT_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_EXPORT_PER_MINUTE, 10, 'RATE_LIMIT_EXPORT_PER_MINUTE'),
+    RATE_LIMIT_STATUS_PER_MINUTE: parsePositiveInt(rawEnv.RATE_LIMIT_STATUS_PER_MINUTE, 60, 'RATE_LIMIT_STATUS_PER_MINUTE'),
 
     TELEGRAM_BOT_TOKEN: rawEnv.TELEGRAM_BOT_TOKEN,
 
@@ -281,6 +310,10 @@ export const buildConfig = loadConfig;
 export function validateEnv(config) {
   if (config.NODE_ENV !== 'production') {
     return;
+  }
+
+  if (config.HMAC_LEGACY_V1_ENABLED) {
+    throw new Error('HMAC_LEGACY_V1_ENABLED must be false in production');
   }
 
   function requireString(name, minLength = 1) {

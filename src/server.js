@@ -14,6 +14,8 @@ import { pingDatabase, disconnectPrisma } from './infrastructure/persistence/pri
 // Middleware
 import { requireHmac } from './infrastructure/web/middleware/hmac.middleware.js';
 import { requireAuth, requireUser, optionalUser } from './infrastructure/web/middleware/auth.middleware.js';
+import { redisSecurityService } from './infrastructure/security/redis-security.service.js';
+import { limitActiveGenerations, rateLimitIp, rateLimitUser } from './infrastructure/web/middleware/rate-limit.middleware.js';
 
 // Controllers
 import { AuthController } from './infrastructure/web/controllers/auth.controller.js';
@@ -40,12 +42,17 @@ export async function createApp() {
   validateEnv(env);
 
   const app = express();
+  // Never trust every proxy. Operators may provide an explicit hop count or
+  // comma-separated network allowlist through TRUST_PROXY.
+  app.set('trust proxy', env.TRUST_PROXY);
+  app.locals.container = container;
+  app.locals.redisSecurity = redisSecurityService;
 
   // CORS - wildcard only in development; explicit origins in production
   const corsOrigins = env.CORS_ORIGINS;
   const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id', 'X-Timestamp', 'X-User-JWT', 'X-App-Id', 'X-App-Timestamp', 'X-App-Nonce', 'X-App-Signature']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id', 'X-Timestamp', 'X-User-JWT', 'X-App-Id', 'X-App-Timestamp', 'X-App-Nonce', 'X-App-Signature', 'X-App-Hmac-Version', 'X-Integrity-Provider', 'X-Integrity-Token']
   };
 
   if (corsOrigins === '*') {
@@ -153,6 +160,8 @@ export async function createApp() {
         await pingDatabase();
       }
 
+      await app.locals.redisSecurity.checkReady();
+
       res.json({ status: 'ready', timestamp: new Date().toISOString() });
     } catch (error) {
       console.error('Readiness probe failed:', error);
@@ -162,10 +171,16 @@ export async function createApp() {
 
   // --- Authentication ---
   // App Token (HMAC only)
-  app.post('/api/v1/auth/token', requireHmac, AuthController.generateAppToken);
+  app.post('/api/v1/auth/token', rateLimitIp({
+    scope: 'auth-token-ip',
+    limit: env.RATE_LIMIT_AUTH_TOKEN_PER_MINUTE
+  }), requireHmac, AuthController.generateAppToken);
 
   // Google Sign-In (HMAC + User auth)
-  app.post('/api/v1/auth/google', requireHmac, AuthController.googleAuth);
+  app.post('/api/v1/auth/google', rateLimitIp({
+    scope: 'auth-google-ip',
+    limit: env.RATE_LIMIT_AUTH_GOOGLE_PER_MINUTE
+  }), requireHmac, AuthController.googleAuth);
 
   // Session Management (HMAC + User JWT)
   app.get('/api/v1/auth/me', requireHmac, requireAuth, AuthController.validateSession);
@@ -182,9 +197,17 @@ export async function createApp() {
   app.get('/api/v1/plans', requireHmac, requireAuth, PlanController.getPlans);
 
   // --- Payments (HMAC + User JWT required) ---
-  app.post('/api/v1/payments/validate/google-play', requireHmac, requireUser, PaymentController.validateGooglePlayPurchase);
+  app.post('/api/v1/payments/validate/google-play', requireHmac, requireUser, rateLimitUser({
+    scope: 'payment-user',
+    limit: env.RATE_LIMIT_PAYMENT_PER_MINUTE,
+    failClosed: true
+  }), PaymentController.validateGooglePlayPurchase);
   if (env.ENABLE_APPLE_PAYMENTS) {
-    app.post('/api/v1/payments/validate/apple-app-store', requireHmac, requireUser, PaymentController.validateApplePurchase);
+    app.post('/api/v1/payments/validate/apple-app-store', requireHmac, requireUser, rateLimitUser({
+      scope: 'payment-user',
+      limit: env.RATE_LIMIT_PAYMENT_PER_MINUTE,
+      failClosed: true
+    }), PaymentController.validateApplePurchase);
   }
 
   // --- Balance (HMAC + User JWT required) ---
@@ -217,14 +240,46 @@ export async function createApp() {
     next();
   };
 
-  app.post('/api/v1/ai/process-image', requireHmac, requireUser, logRequestFlow, upload.single('image'), handleMulterError, AiController.processImage);
-  app.post('/api/v1/ai/img2vid', requireHmac, requireUser, AiController.img2vid);
-  app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, AiController.getStatus);
+  const rejectLegacyMultipartInProduction = (req, res, next) => {
+    if (env.NODE_ENV === 'production' && req.headers['content-type']?.toLowerCase().includes('multipart/form-data')) {
+      return res.status(415).json({
+        error: 'Legacy multipart disabled',
+        message: 'Use a JSON request with objectKey and hash'
+      });
+    }
+    return next();
+  };
+
+  const generationRateLimit = rateLimitUser({
+    scope: 'generation-user',
+    limit: env.RATE_LIMIT_GENERATION_PER_MINUTE,
+    failClosed: true
+  });
+  const activeGenerationLimit = limitActiveGenerations();
+  const uploadRateLimit = rateLimitUser({
+    scope: 'upload-user',
+    limit: env.RATE_LIMIT_UPLOAD_PER_MINUTE,
+    failClosed: true
+  });
+  const statusRateLimit = rateLimitUser({
+    scope: 'status-user',
+    limit: env.RATE_LIMIT_STATUS_PER_MINUTE,
+    failClosed: true
+  });
+  const exportRateLimit = rateLimitUser({
+    scope: 'export-user',
+    limit: env.RATE_LIMIT_EXPORT_PER_MINUTE,
+    failClosed: true
+  });
+
+  app.post('/api/v1/ai/process-image', rejectLegacyMultipartInProduction, requireHmac, requireUser, generationRateLimit, uploadRateLimit, activeGenerationLimit, logRequestFlow, upload.single('image'), handleMulterError, AiController.processImage);
+  app.post('/api/v1/ai/img2vid', requireHmac, requireUser, generationRateLimit, activeGenerationLimit, AiController.img2vid);
+  app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, statusRateLimit, AiController.getStatus);
 
   // --- Async Generation (HMAC + User JWT required) ---
-  app.post('/api/v1/generation', requireHmac, requireUser, GenerationController.create);
-  app.get('/api/v1/generation', requireHmac, requireUser, GenerationController.getUserJobs);
-  app.get('/api/v1/generation/:jobId', requireHmac, requireUser, GenerationController.getById);
+  app.post('/api/v1/generation', requireHmac, requireUser, generationRateLimit, activeGenerationLimit, GenerationController.create);
+  app.get('/api/v1/generation', requireHmac, requireUser, statusRateLimit, GenerationController.getUserJobs);
+  app.get('/api/v1/generation/:jobId', requireHmac, requireUser, statusRateLimit, GenerationController.getById);
 
   // --- Stickers CRUD (HMAC + User JWT required) ---
   app.get('/api/v1/stickers', requireHmac, requireUser, StickerController.getUserStickers);
@@ -247,17 +302,17 @@ export async function createApp() {
 
   // --- Telegram Sticker Packs (HMAC + User JWT required) ---
   if (env.ENABLE_TELEGRAM) {
-    app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, TelegramController.exportPack);
+    app.post('/api/v1/telegram/export-pack', requireHmac, requireUser, exportRateLimit, TelegramController.exportPack);
     app.post('/api/v1/telegram/reconcile-pack', requireHmac, requireUser, TelegramController.reconcilePack);
-    app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, TelegramController.getPackStatus);
+    app.get('/api/v1/telegram/pack-status/:setName', requireHmac, requireUser, statusRateLimit, TelegramController.getPackStatus);
   }
 
   // --- WhatsApp Sticker Export (HMAC + User JWT required) ---
   if (env.ENABLE_WHATSAPP_EXPORT) {
-    app.post('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportSticker);
-    app.get('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getStickerExportStatus);
-    app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.exportPackage);
-    app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, WhatsAppStickerExportController.getPackageExportStatus);
+    app.post('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, exportRateLimit, WhatsAppStickerExportController.exportSticker);
+    app.get('/api/v1/stickers/:id/export/whatsapp', requireHmac, requireUser, statusRateLimit, WhatsAppStickerExportController.getStickerExportStatus);
+    app.post('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, exportRateLimit, WhatsAppStickerExportController.exportPackage);
+    app.get('/api/v1/packages/:id/export/whatsapp', requireHmac, requireUser, statusRateLimit, WhatsAppStickerExportController.getPackageExportStatus);
   }
 
   // --- Private Assets (User JWT or signed token) ---
@@ -331,5 +386,6 @@ export async function startServer(options = {}) {
 export async function stopServer({ server, container }) {
   await new Promise((resolve) => server.close(() => resolve()));
   await container.services.generationQueue?.close();
+  await redisSecurityService.close();
   await disconnectPrisma();
 }

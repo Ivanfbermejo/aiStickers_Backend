@@ -4,6 +4,7 @@ import {
   isInternalUrl,
   validateClientImageReference
 } from '../../../application/services/secure-asset.service.js';
+import { resolveClientAsset } from './client-asset.js';
 
 function isAllowedExternalImageUrl(urlString) {
   if (isInternalUrl(urlString)) return true;
@@ -37,7 +38,7 @@ export class GenerationController {
         });
       }
 
-      const { type, imageUrl, prompt, styleId, emoji, packageId } = req.body || {};
+      const { type, imageUrl, objectKey, hash, prompt, styleId, emoji, packageId } = req.body || {};
 
       if (!type) {
         return res.status(400).json({
@@ -56,11 +57,23 @@ export class GenerationController {
         });
       }
 
+      if (objectKey && imageUrl) {
+        return res.status(400).json({
+          error: 'Multiple image references',
+          message: 'Provide objectKey and hash or imageUrl, not both'
+        });
+      }
+
       let inputAsset;
-      if (imageUrl) {
+      if (imageUrl || objectKey) {
         try {
-          await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
-          inputAsset = await container.services.asset.ingestClientAsset({
+          if (imageUrl) {
+            await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
+          }
+          inputAsset = await resolveClientAsset({
+            assetService: container.services.asset,
+            objectKey,
+            hash,
             reference: imageUrl,
             ownerId: userId,
             allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST

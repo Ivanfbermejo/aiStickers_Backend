@@ -18,6 +18,7 @@ export function hmacHex(secret, str) {
  * @param {string} opts.clientSecret
  * @param {number} [opts.timestamp] Unix seconds
  * @param {string} [opts.nonce] UUID
+ * @param {string|number} [opts.version] HMAC protocol version
  */
 export function signRequest({
   method = 'GET',
@@ -26,7 +27,8 @@ export function signRequest({
   clientId,
   clientSecret,
   timestamp,
-  nonce
+  nonce,
+  version = '2'
 }) {
   const ts = timestamp ?? Math.floor(Date.now() / 1000);
   const n = nonce ?? crypto.randomUUID();
@@ -39,13 +41,16 @@ export function signRequest({
     raw = Buffer.from(JSON.stringify(body));
   }
   const bodyHash = sha256Hex(raw);
-  const msg = `${ts}.${n}.${method.toUpperCase()}.${path}.${bodyHash}`;
+  const msg = version === '2'
+    ? `v2.${ts}.${n}.${method.toUpperCase()}.${path}.${bodyHash}`
+    : `${ts}.${n}.${method.toUpperCase()}.${path}.${bodyHash}`;
   const sig = hmacHex(clientSecret, msg);
 
   return {
     'X-App-Id': clientId,
     'X-App-Timestamp': String(ts),
     'X-App-Nonce': n,
-    'X-App-Signature': sig
+    'X-App-Signature': sig,
+    'X-App-Hmac-Version': String(version)
   };
 }

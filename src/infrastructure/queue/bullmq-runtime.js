@@ -46,19 +46,20 @@ async function loadRedis() {
   return redisModule.default || redisModule.Redis || redisModule;
 }
 
-export function redisConnectionOptions(url = env.REDIS_URL) {
+export function redisConnectionOptions(url = env.REDIS_URL, overrides = {}) {
   return {
     url,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     connectTimeout: 5000,
-    retryStrategy: attempts => Math.min(attempts * 250, 5000)
+    retryStrategy: attempts => Math.min(attempts * 250, 5000),
+    ...overrides
   };
 }
 
-export async function createRedisConnection(url = env.REDIS_URL) {
+export async function createRedisConnection(url = env.REDIS_URL, overrides = {}) {
   const Redis = await loadRedis();
-  const options = redisConnectionOptions(url);
+  const options = redisConnectionOptions(url, overrides);
   return new Redis(options.url, options);
 }
 

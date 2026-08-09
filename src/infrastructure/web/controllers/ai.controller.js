@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
 import { isInternalUrl, validateClientImageReference } from '../../../application/services/secure-asset.service.js';
+import { resolveClientAsset } from './client-asset.js';
 
 function isAllowedExternalImageUrl(urlString) {
   if (isInternalUrl(urlString)) return true;
@@ -21,9 +22,9 @@ export class AiController {
    */
   static async processImage(req, res) {
     try {
-      const { prompt, packageId } = req.body || {};
+      const { prompt, packageId, objectKey, hash } = req.body || {};
 
-      if (!req.file && !req.body?.imageUrl) {
+      if (!req.file && !req.body?.imageUrl && !objectKey) {
         return res.status(400).json({
           error: 'No image provided',
           message: 'Upload an image file or provide imageUrl'
@@ -40,6 +41,13 @@ export class AiController {
 
       const imageUrl = req.body?.imageUrl;
 
+      if (objectKey && imageUrl) {
+        return res.status(400).json({
+          error: 'Multiple image references',
+          message: 'Provide objectKey and hash or imageUrl, not both'
+        });
+      }
+
       if (imageUrl && !isAllowedExternalImageUrl(imageUrl)) {
         return res.status(400).json({
           error: 'External image URLs disabled',
@@ -47,7 +55,7 @@ export class AiController {
         });
       }
 
-      if (!req.file) {
+      if (!req.file && !objectKey) {
         try {
           await validateClientImageReference(imageUrl, { allowlist: env.EXTERNAL_IMAGE_URL_ALLOWLIST });
         } catch (err) {
@@ -60,7 +68,10 @@ export class AiController {
 
       let inputAsset;
       try {
-        inputAsset = await container.services.asset.ingestClientAsset({
+        inputAsset = await resolveClientAsset({
+          assetService: container.services.asset,
+          objectKey,
+          hash,
           reference: imageUrl,
           buffer: req.file?.buffer,
           declaredMimeType: req.file?.mimetype,
