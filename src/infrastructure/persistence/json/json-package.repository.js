@@ -39,9 +39,15 @@ export class JsonPackageRepository extends IPackageRepository {
     await fs.promises.writeFile(this.dbFile, JSON.stringify(data, null, 2));
   }
   
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
+    return new Package(data);
+  }
+
+  async findPublicById(id) {
+    const data = this.cache.get(id);
+    if (!data || data.isPublic !== true) return null;
     return new Package(data);
   }
   
@@ -104,11 +110,15 @@ export class JsonPackageRepository extends IPackageRepository {
     return pkg;
   }
   
-  async update(pkg) {
+  async update(pkg, userId = pkg?.userId) {
+    const current = this.cache.get(pkg.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(pkg);
   }
   
-  async delete(id) {
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;

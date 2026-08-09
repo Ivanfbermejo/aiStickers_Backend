@@ -78,8 +78,15 @@ function toPackageData(pkg) {
 }
 
 export class PostgresPackageRepository extends IPackageRepository {
-  async findById(id) {
-    const raw = await getPrismaClient().package.findUnique({ where: { id } });
+  async findById(id, userId) {
+    const raw = await getPrismaClient().package.findFirst({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
+    return toPackage(raw);
+  }
+
+  async findPublicById(id) {
+    const raw = await getPrismaClient().package.findFirst({ where: { id, isPublic: true } });
     return toPackage(raw);
   }
 
@@ -126,13 +133,21 @@ export class PostgresPackageRepository extends IPackageRepository {
     return pkg;
   }
 
-  async update(pkg) {
-    return this.save(pkg);
+  async update(pkg, userId = pkg?.userId) {
+    const prisma = getPrismaClient();
+    const data = toPackageData(pkg);
+    const result = await prisma.package.updateMany({
+      where: { id: pkg.id, ...(userId ? { userId } : {}) },
+      data: { ...data, id: undefined }
+    });
+    return result.count > 0 ? pkg : false;
   }
 
-  async delete(id) {
-    await getPrismaClient().package.delete({ where: { id } });
-    return true;
+  async delete(id, userId) {
+    const result = await getPrismaClient().package.deleteMany({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
+    return result.count > 0;
   }
 
   async deleteByUserId(userId) {

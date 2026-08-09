@@ -39,9 +39,9 @@ export class JsonStickerRepository extends IStickerRepository {
     await fs.promises.writeFile(this.dbFile, JSON.stringify(data, null, 2));
   }
   
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
     return new Sticker(data);
   }
   
@@ -52,15 +52,15 @@ export class JsonStickerRepository extends IStickerRepository {
     return stickers.map(s => new Sticker(s));
   }
   
-  async findByPackageId(packageId) {
+  async findByPackageId(packageId, userId) {
     const stickers = Array.from(this.cache.values())
-      .filter(s => s.packageId === packageId)
+      .filter(s => s.packageId === packageId && (!userId || s.userId === userId))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return stickers.map(s => new Sticker(s));
   }
   
-  async findByReplicateId(replicateId) {
-    const data = Array.from(this.cache.values()).find(s => s.replicateId === replicateId);
+  async findByReplicateId(replicateId, userId) {
+    const data = Array.from(this.cache.values()).find(s => s.replicateId === replicateId && (!userId || s.userId === userId));
     if (!data) return null;
     return new Sticker(data);
   }
@@ -114,11 +114,15 @@ export class JsonStickerRepository extends IStickerRepository {
     return sticker;
   }
   
-  async update(sticker) {
+  async update(sticker, userId = sticker?.userId) {
+    const current = this.cache.get(sticker.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(sticker);
   }
   
-  async delete(id) {
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;

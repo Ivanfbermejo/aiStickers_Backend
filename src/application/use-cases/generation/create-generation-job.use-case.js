@@ -18,6 +18,7 @@ export class CreateGenerationJobUseCase {
   constructor({
     generationJobRepository,
     stickerRepository,
+    packageRepository,
     spendBalanceUseCase,
     generationQueue,
     unitOfWork,
@@ -26,6 +27,7 @@ export class CreateGenerationJobUseCase {
   }) {
     this.generationJobRepository = generationJobRepository;
     this.stickerRepository = stickerRepository;
+    this.packageRepository = packageRepository;
     this.spendBalanceUseCase = spendBalanceUseCase;
     this.generationQueue = generationQueue;
     this.unitOfWork = unitOfWork;
@@ -68,6 +70,17 @@ export class CreateGenerationJobUseCase {
 
     if (!asset?.key) {
       throw new Error('asset with objectKey metadata is required');
+    }
+
+    if (packageId) {
+      const pkg = this.packageRepository
+        ? await this.packageRepository.findById(packageId, userId)
+        : null;
+      if (!pkg) {
+        const error = new Error('Package does not exist or does not belong to user');
+        error.code = 'PACKAGE_NOT_FOUND';
+        throw error;
+      }
     }
 
     const cost = 1;

@@ -116,6 +116,13 @@ export class AiController {
         });
       }
 
+      if (error.code === 'PACKAGE_NOT_FOUND') {
+        return res.status(404).json({
+          error: 'Package not found',
+          message: error.message
+        });
+      }
+
       return res.status(500).json({
         error: 'Sticker generation failed',
         message: error.message || 'Internal error'
@@ -141,6 +148,22 @@ export class AiController {
   static async getStatus(req, res) {
     try {
       const { predictionId } = req.params;
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User ID not found in token'
+        });
+      }
+
+      const dependencies = req.app.locals.container || container;
+      const job = await dependencies.repositories.generationJob.findByProviderPredictionId(predictionId, userId);
+      if (!job) {
+        return res.status(404).json({
+          error: 'Prediction not found',
+          message: 'Prediction does not exist or does not belong to user'
+        });
+      }
       
       const response = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
         headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` }

@@ -113,8 +113,14 @@ export class PostgresStickerRepository extends IStickerRepository {
     return new PostgresStickerRepository(prismaClient);
   }
 
-  async findById(id, tx) {
-    const raw = await this._getPrisma(tx).sticker.findUnique({ where: { id } });
+  async findById(id, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const raw = await this._getPrisma(tx).sticker.findFirst({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
     return toSticker(raw);
   }
 
@@ -126,16 +132,26 @@ export class PostgresStickerRepository extends IStickerRepository {
     return rows.map(toSticker);
   }
 
-  async findByPackageId(packageId, tx) {
+  async findByPackageId(packageId, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
     const rows = await this._getPrisma(tx).sticker.findMany({
-      where: { packageId },
+      where: { packageId, ...(userId ? { userId } : {}) },
       orderBy: { createdAt: 'desc' }
     });
     return rows.map(toSticker);
   }
 
-  async findByReplicateId(replicateId, tx) {
-    const raw = await this._getPrisma(tx).sticker.findFirst({ where: { replicateId } });
+  async findByReplicateId(replicateId, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const raw = await this._getPrisma(tx).sticker.findFirst({
+      where: { replicateId, ...(userId ? { userId } : {}) }
+    });
     return toSticker(raw);
   }
 
@@ -158,13 +174,29 @@ export class PostgresStickerRepository extends IStickerRepository {
     return sticker;
   }
 
-  async update(sticker, tx) {
-    return this.save(sticker, tx);
+  async update(sticker, userId = sticker?.userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = sticker?.userId;
+    }
+    const prisma = this._getPrisma(tx);
+    const data = toStickerData(sticker);
+    const result = await prisma.sticker.updateMany({
+      where: { id: sticker.id, ...(userId ? { userId } : {}) },
+      data: { ...data, id: undefined }
+    });
+    return result.count > 0 ? sticker : false;
   }
 
-  async delete(id, tx) {
-    await this._getPrisma(tx).sticker.delete({ where: { id } });
-    return true;
+  async delete(id, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const result = await this._getPrisma(tx).sticker.deleteMany({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
+    return result.count > 0;
   }
 
   async deleteByUserId(userId, tx) {

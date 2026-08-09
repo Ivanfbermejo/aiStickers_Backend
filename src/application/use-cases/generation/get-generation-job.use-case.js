@@ -16,13 +16,13 @@ export class GetGenerationJobUseCase {
    * @returns {Object} Job and sticker if available
    */
   async execute({ userId, jobId }) {
-    const job = await this.generationJobRepository.findById(jobId);
+    const job = await this.generationJobRepository.findById(jobId, userId);
 
-    if (!job || job.userId !== userId) {
+    if (!job) {
       return { found: false };
     }
 
-    const sticker = await this.stickerRepository.findById(job.stickerId);
+    const sticker = await this.stickerRepository.findById(job.stickerId, userId);
 
     return {
       found: true,

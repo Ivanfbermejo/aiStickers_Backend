@@ -127,6 +127,7 @@ export class Container {
     this.useCases.createGenerationJob = new CreateGenerationJobUseCase({
       generationJobRepository: this.repositories.generationJob,
       stickerRepository: this.repositories.sticker,
+      packageRepository: this.repositories.package,
       spendBalanceUseCase: this.useCases.spendBalance,
       generationQueue: this.services.generationQueue,
       unitOfWork: this.repositories.unitOfWork,

@@ -13,6 +13,7 @@ import { Sticker } from '../../src/domain/entities/sticker.entity.js';
 import { Package } from '../../src/domain/entities/package.entity.js';
 import { GenerationJob } from '../../src/domain/entities/generation-job.entity.js';
 import { Session } from '../../src/domain/entities/session.entity.js';
+import { TelegramPackLink } from '../../src/domain/entities/telegram-pack-link.entity.js';
 
 import { JsonUserRepository } from '../../src/infrastructure/persistence/json/json-user.repository.js';
 import { JsonBalanceRepository } from '../../src/infrastructure/persistence/json/json-balance.repository.js';
@@ -22,6 +23,7 @@ import { JsonStickerRepository } from '../../src/infrastructure/persistence/json
 import { JsonPackageRepository } from '../../src/infrastructure/persistence/json/json-package.repository.js';
 import { JsonGenerationJobRepository } from '../../src/infrastructure/persistence/json/json-generation-job.repository.js';
 import { JsonSessionRepository } from '../../src/infrastructure/persistence/json/json-session.repository.js';
+import { JsonTelegramPackLinkRepository } from '../../src/infrastructure/persistence/json/json-telegram-pack-link.repository.js';
 
 import { PostgresUserRepository } from '../../src/infrastructure/persistence/postgres/postgres-user.repository.js';
 import { PostgresBalanceRepository } from '../../src/infrastructure/persistence/postgres/postgres-balance.repository.js';
@@ -31,6 +33,7 @@ import { PostgresStickerRepository } from '../../src/infrastructure/persistence/
 import { PostgresPackageRepository } from '../../src/infrastructure/persistence/postgres/postgres-package.repository.js';
 import { PostgresGenerationJobRepository } from '../../src/infrastructure/persistence/postgres/postgres-generation-job.repository.js';
 import { PostgresSessionRepository } from '../../src/infrastructure/persistence/postgres/postgres-session.repository.js';
+import { PostgresTelegramPackLinkRepository } from '../../src/infrastructure/persistence/postgres/postgres-telegram-pack-link.repository.js';
 
 import { getPrismaClient, disconnectPrisma } from '../../src/infrastructure/persistence/prisma/client.js';
 import { hasTestDatabase, getBaseDatabaseUrl, migrateDeploy } from '../helpers/postgres.js';
@@ -57,6 +60,7 @@ function makeJsonDriver() {
         sticker: new JsonStickerRepository(dataDir),
         package: new JsonPackageRepository(dataDir),
         generationJob: new JsonGenerationJobRepository(dataDir),
+        telegramPackLink: new JsonTelegramPackLinkRepository(dataDir),
         session: new JsonSessionRepository(dataDir)
       };
       const createdUserIds = [];
@@ -89,6 +93,7 @@ function makePostgresDriver() {
         sticker: new PostgresStickerRepository(),
         package: new PostgresPackageRepository(),
         generationJob: new PostgresGenerationJobRepository(),
+        telegramPackLink: new PostgresTelegramPackLinkRepository(),
         session: new PostgresSessionRepository()
       };
       const prisma = getPrismaClient();
@@ -271,6 +276,7 @@ for (const driver of drivers) {
         await ctx.repos.sticker.save(sticker);
 
         expect(await ctx.repos.sticker.findById(sticker.id)).toMatchObject({ id: sticker.id });
+        expect(await ctx.repos.sticker.findById(sticker.id, 'other-user')).toBeNull();
         expect(await ctx.repos.sticker.findByUserId(userId)).toHaveLength(1);
         expect(await ctx.repos.sticker.findByReplicateId(replicateId)).toMatchObject({ id: sticker.id });
         expect(await ctx.repos.sticker.countByUserId(userId)).toBe(1);
@@ -292,6 +298,7 @@ for (const driver of drivers) {
         await ctx.repos.package.save(pkg);
 
         expect(await ctx.repos.package.findById(pkg.id)).toMatchObject({ id: pkg.id });
+        expect(await ctx.repos.package.findById(pkg.id, 'other-user')).toBeNull();
         expect(await ctx.repos.package.findByUserId(userId)).toHaveLength(1);
         const publicPacks = await ctx.repos.package.findPublic();
         expect(publicPacks.some(p => p.id === pkg.id)).toBe(true);
@@ -314,6 +321,27 @@ for (const driver of drivers) {
         expect(await ctx.repos.generationJob.findByUserId(userId)).toHaveLength(1);
         expect(await ctx.repos.generationJob.findByStickerId(sticker.id)).toMatchObject({ id: job.id });
         expect(await ctx.repos.generationJob.findPending()).toHaveLength(1);
+      });
+    });
+
+    describe('TelegramPackLinkRepository', () => {
+      it('persists a Telegram link and scopes it by local owner', async () => {
+        const userId = await ctx.createUser();
+        const pkg = Package.create({ userId, name: 'Telegram Pack' });
+        await ctx.repos.package.save(pkg);
+        const link = TelegramPackLink.create({
+          userId,
+          telegramUserId: '12345',
+          packageId: pkg.id,
+          setName: `aistickers_${uniqueStr('set')}_by_bot`,
+          stickerFileIds: { sticker_1: 'telegram-file-1' }
+        });
+        await ctx.repos.telegramPackLink.save(link);
+
+        expect(await ctx.repos.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id))
+          .toMatchObject({ telegramUserId: '12345', setName: link.setName });
+        expect(await ctx.repos.telegramPackLink.findByUserIdAndPackageId('other-user', pkg.id)).toBeNull();
+        expect(await ctx.repos.telegramPackLink.findBySetName(link.setName, 'other-user')).toBeNull();
       });
     });
 

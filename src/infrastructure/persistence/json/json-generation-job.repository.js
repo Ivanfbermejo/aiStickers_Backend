@@ -70,13 +70,15 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     return job;
   }
 
-  async update(job) {
+  async update(job, userId = job?.userId) {
+    const current = this.cache.get(job.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(job);
   }
 
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
     return new GenerationJob(data);
   }
 
@@ -104,13 +106,21 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     return jobs.map(job => new GenerationJob(job));
   }
 
-  async findByStickerId(stickerId) {
-    const data = Array.from(this.cache.values()).find(j => j.stickerId === stickerId);
+  async findByStickerId(stickerId, userId) {
+    const data = Array.from(this.cache.values()).find(j => j.stickerId === stickerId && (!userId || j.userId === userId));
     if (!data) return null;
     return new GenerationJob(data);
   }
 
-  async delete(id) {
+  async findByProviderPredictionId(providerPredictionId, userId) {
+    const data = Array.from(this.cache.values()).find(j => j.providerPredictionId === providerPredictionId && (!userId || j.userId === userId));
+    if (!data) return null;
+    return new GenerationJob(data);
+  }
+
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;

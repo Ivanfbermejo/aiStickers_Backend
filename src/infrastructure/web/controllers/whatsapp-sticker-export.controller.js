@@ -28,8 +28,8 @@ export const WhatsAppStickerExportController = {
         return res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
       }
 
-      const sticker = await container.repositories.sticker.findById(id);
-      if (!sticker || sticker.userId !== userId) {
+      const sticker = await container.repositories.sticker.findById(id, userId);
+      if (!sticker) {
         return res.status(404).json({ error: 'Sticker not found' });
       }
 
@@ -38,7 +38,7 @@ export const WhatsAppStickerExportController = {
       }
 
       sticker.markExportProcessing();
-      await container.repositories.sticker.update(sticker);
+      await container.repositories.sticker.update(sticker, userId);
 
       try {
         const result = await WhatsAppService.exportSticker(
@@ -48,7 +48,7 @@ export const WhatsAppStickerExportController = {
           `whatsapp-sticker:${sticker.id}:${sticker.objectHash || 'legacy'}`
         );
         sticker.markExportReady(result);
-        await container.repositories.sticker.update(sticker);
+        await container.repositories.sticker.update(sticker, userId);
 
         return res.status(200).json({
           success: true,
@@ -65,7 +65,7 @@ export const WhatsAppStickerExportController = {
         });
       } catch (err) {
         sticker.markExportFailed(err.message);
-        await container.repositories.sticker.update(sticker);
+        await container.repositories.sticker.update(sticker, userId);
         throw err;
       }
     } catch (err) {
@@ -86,8 +86,8 @@ export const WhatsAppStickerExportController = {
         return res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
       }
 
-      const sticker = await container.repositories.sticker.findById(id);
-      if (!sticker || sticker.userId !== userId) {
+      const sticker = await container.repositories.sticker.findById(id, userId);
+      if (!sticker) {
         return res.status(404).json({ error: 'Sticker not found' });
       }
 
@@ -135,18 +135,18 @@ export const WhatsAppStickerExportController = {
         return res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
       }
 
-      const pkg = await container.repositories.package.findById(id);
-      if (!pkg || pkg.userId !== userId) {
+      const pkg = await container.repositories.package.findById(id, userId);
+      if (!pkg) {
         return res.status(404).json({ error: 'Package not found' });
       }
 
-      const stickers = await container.repositories.sticker.findByPackageId(id);
+      const stickers = await container.repositories.sticker.findByPackageId(id, userId);
       if (stickers.length === 0) {
         return res.status(400).json({ error: 'Package has no stickers' });
       }
 
       pkg.markExportProcessing();
-      await container.repositories.package.update(pkg);
+      await container.repositories.package.update(pkg, userId);
 
       try {
         const result = await WhatsAppService.exportPack({
@@ -175,7 +175,7 @@ export const WhatsAppStickerExportController = {
           whatsappReady: result.whatsappReady
         });
         pkg.packType = result.packType;
-        await container.repositories.package.update(pkg);
+        await container.repositories.package.update(pkg, userId);
 
         // Persist per-sticker export results where available.
         for (const stickerResult of result.stickerResults) {
@@ -183,7 +183,7 @@ export const WhatsAppStickerExportController = {
           const sticker = stickers.find(s => s.id === stickerResult.id);
           if (sticker) {
             sticker.markExportReady(stickerResult);
-            await container.repositories.sticker.update(sticker);
+            await container.repositories.sticker.update(sticker, userId);
           }
         }
 
@@ -202,7 +202,7 @@ export const WhatsAppStickerExportController = {
         });
       } catch (err) {
         pkg.markExportFailed(err.message);
-        await container.repositories.package.update(pkg);
+        await container.repositories.package.update(pkg, userId);
         throw err;
       }
     } catch (err) {
@@ -223,12 +223,12 @@ export const WhatsAppStickerExportController = {
         return res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
       }
 
-      const pkg = await container.repositories.package.findById(id);
-      if (!pkg || pkg.userId !== userId) {
+      const pkg = await container.repositories.package.findById(id, userId);
+      if (!pkg) {
         return res.status(404).json({ error: 'Package not found' });
       }
 
-      const stickers = await container.repositories.sticker.findByPackageId(id);
+      const stickers = await container.repositories.sticker.findByPackageId(id, userId);
       let trayValidation = null;
       if (pkg.trayIconObjectKey) {
         trayValidation = await WhatsAppService.validateTrayIcon(

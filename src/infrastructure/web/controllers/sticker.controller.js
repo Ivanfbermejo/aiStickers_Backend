@@ -93,15 +93,15 @@ export class StickerController {
       }
 
       // Verify package belongs to user
-      const pkg = await container.repositories.package.findById(packageId);
-      if (!pkg || pkg.userId !== userId) {
+      const pkg = await container.repositories.package.findById(packageId, userId);
+      if (!pkg) {
         return res.status(404).json({
           error: 'Package not found',
           message: 'Package does not exist or does not belong to user'
         });
       }
 
-      const stickers = await container.repositories.sticker.findByPackageId(packageId);
+      const stickers = await container.repositories.sticker.findByPackageId(packageId, userId);
       
       return res.json({
         success: true,
@@ -140,9 +140,9 @@ export class StickerController {
         });
       }
 
-      const sticker = await container.repositories.sticker.findById(id);
+      const sticker = await container.repositories.sticker.findById(id, userId);
       
-      if (!sticker || sticker.userId !== userId) {
+      if (!sticker) {
         return res.status(404).json({
           error: 'Sticker not found',
           message: 'Sticker does not exist or does not belong to user'
@@ -215,8 +215,8 @@ export class StickerController {
 
       // If packageId provided, verify it belongs to user
       if (packageId) {
-        const pkg = await container.repositories.package.findById(packageId);
-        if (!pkg || pkg.userId !== userId) {
+        const pkg = await container.repositories.package.findById(packageId, userId);
+        if (!pkg) {
           return res.status(404).json({
             error: 'Package not found',
             message: 'Package does not exist or does not belong to user'
@@ -250,10 +250,10 @@ export class StickerController {
 
       // Update package sticker count if packageId provided
       if (packageId) {
-        const pkg = await container.repositories.package.findById(packageId);
+        const pkg = await container.repositories.package.findById(packageId, userId);
         if (pkg) {
           pkg.incrementStickerCount();
-          await container.repositories.package.update(pkg);
+          await container.repositories.package.update(pkg, userId);
         }
       }
 
@@ -289,9 +289,9 @@ export class StickerController {
         });
       }
 
-      const sticker = await container.repositories.sticker.findById(id);
+      const sticker = await container.repositories.sticker.findById(id, userId);
       
-      if (!sticker || sticker.userId !== userId) {
+      if (!sticker) {
         return res.status(404).json({
           error: 'Sticker not found',
           message: 'Sticker does not exist or does not belong to user'
@@ -303,8 +303,8 @@ export class StickerController {
 
       // If moving to new package, verify it belongs to user
       if (packageId && packageId !== oldPackageId) {
-        const pkg = await container.repositories.package.findById(packageId);
-        if (!pkg || pkg.userId !== userId) {
+        const pkg = await container.repositories.package.findById(packageId, userId);
+        if (!pkg) {
           return res.status(404).json({
             error: 'Package not found',
             message: 'Package does not exist or does not belong to user'
@@ -315,17 +315,17 @@ export class StickerController {
         
         // Update package counts
         if (oldPackageId) {
-          const oldPkg = await container.repositories.package.findById(oldPackageId);
+          const oldPkg = await container.repositories.package.findById(oldPackageId, userId);
           if (oldPkg) {
             oldPkg.decrementStickerCount();
-            await container.repositories.package.update(oldPkg);
+            await container.repositories.package.update(oldPkg, userId);
           }
         }
         
-        const newPkg = await container.repositories.package.findById(packageId);
+        const newPkg = await container.repositories.package.findById(packageId, userId);
         if (newPkg) {
           newPkg.incrementStickerCount();
-          await container.repositories.package.update(newPkg);
+          await container.repositories.package.update(newPkg, userId);
         }
       }
 
@@ -333,7 +333,7 @@ export class StickerController {
         sticker.updateName(name);
       }
 
-      await container.repositories.sticker.update(sticker);
+      await container.repositories.sticker.update(sticker, userId);
 
       return res.json({
         success: true,
@@ -366,9 +366,9 @@ export class StickerController {
         });
       }
 
-      const sticker = await container.repositories.sticker.findById(id);
+      const sticker = await container.repositories.sticker.findById(id, userId);
       
-      if (!sticker || sticker.userId !== userId) {
+      if (!sticker) {
         return res.status(404).json({
           error: 'Sticker not found',
           message: 'Sticker does not exist or does not belong to user'
@@ -377,17 +377,17 @@ export class StickerController {
 
       // Update package sticker count if sticker was in a package
       if (sticker.packageId) {
-        const pkg = await container.repositories.package.findById(sticker.packageId);
+        const pkg = await container.repositories.package.findById(sticker.packageId, userId);
         if (pkg) {
           pkg.decrementStickerCount();
-          await container.repositories.package.update(pkg);
+          await container.repositories.package.update(pkg, userId);
         }
       }
 
       const cleanupTasks = await Promise.all([sticker.objectKey, sticker.whatsappObjectKey]
         .filter(Boolean).map(key => container.services.assetCleanup.schedule({ key, ownerId: userId, entity: `sticker:${id}` })));
       try {
-        await container.repositories.sticker.delete(id);
+        await container.repositories.sticker.delete(id, userId);
       } catch (error) {
         await Promise.all(cleanupTasks.map(task => container.services.assetCleanup.cancel(task)));
         throw error;

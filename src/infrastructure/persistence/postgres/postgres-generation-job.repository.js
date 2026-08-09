@@ -94,12 +94,28 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return job;
   }
 
-  async update(job, tx) {
-    return this.save(job, tx);
+  async update(job, userId = job?.userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = job?.userId;
+    }
+    const prisma = this._getPrisma(tx);
+    const data = toJobData(job);
+    const result = await prisma.generationJob.updateMany({
+      where: { id: job.id, ...(userId ? { userId } : {}) },
+      data: { ...data, id: undefined }
+    });
+    return result.count > 0 ? job : false;
   }
 
-  async findById(id, tx) {
-    const raw = await this._getPrisma(tx).generationJob.findUnique({ where: { id } });
+  async findById(id, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const raw = await this._getPrisma(tx).generationJob.findFirst({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
     return toJob(raw);
   }
 
@@ -153,14 +169,37 @@ export class PostgresGenerationJobRepository extends IGenerationJobRepository {
     return rows.map(toJob);
   }
 
-  async findByStickerId(stickerId, tx) {
-    const raw = await this._getPrisma(tx).generationJob.findFirst({ where: { stickerId } });
+  async findByStickerId(stickerId, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const raw = await this._getPrisma(tx).generationJob.findFirst({
+      where: { stickerId, ...(userId ? { userId } : {}) }
+    });
     return toJob(raw);
   }
 
-  async delete(id, tx) {
-    await this._getPrisma(tx).generationJob.delete({ where: { id } });
-    return true;
+  async findByProviderPredictionId(providerPredictionId, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const raw = await this._getPrisma(tx).generationJob.findFirst({
+      where: { providerPredictionId, ...(userId ? { userId } : {}) }
+    });
+    return toJob(raw);
+  }
+
+  async delete(id, userId, tx) {
+    if (userId && typeof userId !== 'string') {
+      tx = userId;
+      userId = undefined;
+    }
+    const result = await this._getPrisma(tx).generationJob.deleteMany({
+      where: { id, ...(userId ? { userId } : {}) }
+    });
+    return result.count > 0;
   }
 
   async deleteByUserId(userId, tx) {

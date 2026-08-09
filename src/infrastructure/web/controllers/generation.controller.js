@@ -116,6 +116,13 @@ export class GenerationController {
         });
       }
 
+      if (error.code === 'PACKAGE_NOT_FOUND') {
+        return res.status(404).json({
+          error: 'Package not found',
+          message: error.message
+        });
+      }
+
       return res.status(500).json({
         error: 'Failed to create generation job',
         message: error.message

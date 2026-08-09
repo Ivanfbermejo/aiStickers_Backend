@@ -26,6 +26,7 @@ export async function createRepositories() {
     const { PostgresStickerRepository } = await import('./postgres/postgres-sticker.repository.js');
     const { PostgresPackageRepository } = await import('./postgres/postgres-package.repository.js');
     const { PostgresGenerationJobRepository } = await import('./postgres/postgres-generation-job.repository.js');
+    const { PostgresTelegramPackLinkRepository } = await import('./postgres/postgres-telegram-pack-link.repository.js');
     const { PostgresAssetCleanupTaskRepository } = await import('./postgres/postgres-asset-cleanup-task.repository.js');
     const { PostgresSessionRepository } = await import('./postgres/postgres-session.repository.js');
 
@@ -37,6 +38,7 @@ export async function createRepositories() {
       sticker: new PostgresStickerRepository(),
       package: new PostgresPackageRepository(),
       generationJob: new PostgresGenerationJobRepository(),
+      telegramPackLink: new PostgresTelegramPackLinkRepository(),
       assetCleanupTask: new PostgresAssetCleanupTaskRepository(),
       session: new PostgresSessionRepository()
     };
@@ -52,6 +54,7 @@ export async function createRepositories() {
   const { JsonStickerRepository } = await import('./json/json-sticker.repository.js');
   const { JsonPackageRepository } = await import('./json/json-package.repository.js');
   const { JsonGenerationJobRepository } = await import('./json/json-generation-job.repository.js');
+  const { JsonTelegramPackLinkRepository } = await import('./json/json-telegram-pack-link.repository.js');
   const { JsonSessionRepository } = await import('./json/json-session.repository.js');
 
   const repositories = {
@@ -62,6 +65,7 @@ export async function createRepositories() {
     sticker: new JsonStickerRepository(env.DATA_DIR),
     package: new JsonPackageRepository(env.DATA_DIR),
     generationJob: new JsonGenerationJobRepository(env.DATA_DIR),
+    telegramPackLink: new JsonTelegramPackLinkRepository(env.DATA_DIR),
     session: new JsonSessionRepository(env.DATA_DIR)
   };
   repositories.unitOfWork = new JsonUnitOfWork(repositories);

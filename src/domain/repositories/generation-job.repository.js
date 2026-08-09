@@ -7,11 +7,11 @@ export class IGenerationJobRepository {
     throw new Error('Method not implemented');
   }
 
-  async update(job) {
+  async update(job, userId = job?.userId) {
     throw new Error('Method not implemented');
   }
 
-  async findById(id) {
+  async findById(id, userId) {
     throw new Error('Method not implemented');
   }
 
@@ -27,11 +27,15 @@ export class IGenerationJobRepository {
     throw new Error('Method not implemented');
   }
 
-  async findByStickerId(stickerId) {
+  async findByStickerId(stickerId, userId) {
     throw new Error('Method not implemented');
   }
 
-  async delete(id) {
+  async findByProviderPredictionId(providerPredictionId, userId) {
+    throw new Error('Method not implemented');
+  }
+
+  async delete(id, userId) {
     throw new Error('Method not implemented');
   }
 
