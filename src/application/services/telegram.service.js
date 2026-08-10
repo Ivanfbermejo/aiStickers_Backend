@@ -80,7 +80,7 @@ export async function getBotUsername() {
 }
 
 function inputSticker(reference) {
-  return { type: 'static', sticker: reference, emoji: '🙂' };
+  return { sticker: reference, format: 'static', emoji_list: ['🙂'] };
 }
 
 export async function exportPack({ telegramUserId, setName, packTitle, stickerReferences } = {}) {
@@ -92,7 +92,7 @@ export async function exportPack({ telegramUserId, setName, packTitle, stickerRe
     user_id: Number(telegramUserId),
     name: setName,
     title: packTitle,
-    stickers: JSON.stringify(stickerReferences.map(inputSticker))
+    stickers: stickerReferences.map(inputSticker)
   });
   const set = await callTelegram('getStickerSet', { name: setName });
   return {
@@ -127,7 +127,7 @@ export async function reconcilePack({
     await callTelegram('addStickerToSet', {
       user_id: Number(telegramUserId),
       name: setName,
-      sticker: JSON.stringify(inputSticker(fileId))
+      sticker: inputSticker(fileId)
     });
     added += 1;
     addedFileIds.push(fileId);

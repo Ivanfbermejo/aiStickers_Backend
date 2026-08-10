@@ -73,46 +73,82 @@ export const TelegramController = {
       if (!packageId || !telegramAuth) {
         return res.status(400).json({ error: 'package_id, sticker_ids and telegram_auth are required' });
       }
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'sticker_urls') ||
-        Object.prototype.hasOwnProperty.call(req.body || {}, 'pack_name')) {
-        return res.status(400).json({ error: 'Telegram URLs and pack names are server-controlled' });
+      if (
+        Object.prototype.hasOwnProperty.call(req.body || {}, 'sticker_urls') ||
+        Object.prototype.hasOwnProperty.call(req.body || {}, 'pack_name') ||
+        Object.prototype.hasOwnProperty.call(req.body || {}, 'file_ids')
+      ) {
+        return res.status(400).json({ error: 'Telegram URLs, pack names and file IDs are server-controlled' });
       }
 
       const telegramIdentity = TelegramService.verifyTelegramLogin(telegramAuth);
       const { pkg, stickers, references } = await resolvePackageAndStickers({ userId, packageId, stickerIds });
-      const existing = await container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, packageId);
-      if (existing) {
-        if (existing.telegramUserId !== telegramIdentity.telegramUserId) {
-          return res.status(403).json({ error: 'Telegram link belongs to another Telegram account' });
-        }
-        const status = await TelegramService.getPackStatus({ setName: existing.setName });
-        return res.status(200).json({
-          set_name: existing.setName,
-          add_sticker_url: status.addStickerUrl,
-          sticker_count: status.stickerCount
-        });
-      }
-
       const botUsername = await TelegramService.getBotUsername();
       const setName = TelegramService.deriveSetName({ packageId, botUsername });
-      const result = await TelegramService.exportPack({
-        telegramUserId: telegramIdentity.telegramUserId,
-        setName,
-        packTitle: pkg.name,
-        stickerReferences: references
-      });
+
+      let link = await container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, packageId);
+      if (link) {
+        if (link.telegramUserId !== telegramIdentity.telegramUserId) {
+          return res.status(403).json({ error: 'Telegram link belongs to another Telegram account' });
+        }
+        if (link.status === 'active') {
+          const status = await TelegramService.getPackStatus({ setName: link.setName });
+          return res.status(200).json({
+            set_name: link.setName,
+            add_sticker_url: status.addStickerUrl,
+            sticker_count: status.stickerCount
+          });
+        }
+        if (link.status === 'pending') {
+          // Recover a prior attempt where the remote set may already exist.
+          try {
+            const status = await TelegramService.getPackStatus({ setName: link.setName });
+            link.markActive();
+            await container.repositories.telegramPackLink.update(link, userId);
+            return res.status(200).json({
+              set_name: link.setName,
+              add_sticker_url: status.addStickerUrl,
+              sticker_count: status.stickerCount
+            });
+          } catch {
+            // Remote set does not exist yet; continue to create it below.
+          }
+        }
+      }
+
+      if (!link) {
+        link = TelegramPackLink.create({
+          userId,
+          telegramUserId: telegramIdentity.telegramUserId,
+          packageId,
+          setName,
+          stickerFileIds: {}
+        });
+        await container.repositories.telegramPackLink.save(link);
+      }
+
+      let result;
+      try {
+        result = await TelegramService.exportPack({
+          telegramUserId: telegramIdentity.telegramUserId,
+          setName,
+          packTitle: pkg.name,
+          stickerReferences: references
+        });
+      } catch (error) {
+        link.markFailed();
+        await container.repositories.telegramPackLink.update(link, userId);
+        throw error;
+      }
+
       const stickerFileIds = {};
       for (let index = 0; index < stickers.length; index += 1) {
         const fileId = result.stickers[index]?.file_id;
         if (fileId) stickerFileIds[stickers[index].id] = fileId;
       }
-      await container.repositories.telegramPackLink.save(TelegramPackLink.create({
-        userId,
-        telegramUserId: telegramIdentity.telegramUserId,
-        packageId,
-        setName,
-        stickerFileIds
-      }));
+      link.setStickerFileIds(stickerFileIds);
+      link.markActive();
+      await container.repositories.telegramPackLink.update(link, userId);
 
       return res.status(201).json({
         set_name: result.setName,

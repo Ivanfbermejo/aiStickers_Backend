@@ -1,6 +1,8 @@
 /**
  * Persistent, local ownership record for a Telegram sticker set.
  */
+const VALID_STATUSES = new Set(['pending', 'active', 'failed']);
+
 export class TelegramPackLink {
   constructor({
     id,
@@ -9,6 +11,7 @@ export class TelegramPackLink {
     packageId,
     setName,
     stickerFileIds = {},
+    status = 'pending',
     createdAt,
     updatedAt
   }) {
@@ -18,6 +21,7 @@ export class TelegramPackLink {
     this.packageId = packageId;
     this.setName = setName;
     this.stickerFileIds = { ...stickerFileIds };
+    this.status = status;
     this.createdAt = createdAt || new Date().toISOString();
     this.updatedAt = updatedAt || new Date().toISOString();
     this.validate();
@@ -34,6 +38,19 @@ export class TelegramPackLink {
     if (!this.stickerFileIds || typeof this.stickerFileIds !== 'object' || Array.isArray(this.stickerFileIds)) {
       throw new Error('Telegram sticker file IDs must be an object');
     }
+    if (!VALID_STATUSES.has(this.status)) {
+      throw new Error('Telegram pack link status must be pending, active or failed');
+    }
+  }
+
+  markActive() {
+    this.status = 'active';
+    this.updatedAt = new Date().toISOString();
+  }
+
+  markFailed() {
+    this.status = 'failed';
+    this.updatedAt = new Date().toISOString();
   }
 
   setStickerFileIds(stickerFileIds) {

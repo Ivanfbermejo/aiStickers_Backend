@@ -61,6 +61,13 @@ describe('T10 ownership enforcement', () => {
     expect(await links.findByUserIdAndPackageId('user-b', pkg.id)).toBeNull();
     expect(await stickers.delete(sticker.id, 'user-b')).toBe(false);
     expect(await packages.delete(pkg.id, 'user-b')).toBe(false);
+
+    // Telegram pack link starts PENDING and can transition to ACTIVE/FAILED.
+    expect(link.status).toBe('pending');
+    link.markActive();
+    expect(link.status).toBe('active');
+    link.markFailed();
+    expect(link.status).toBe('failed');
   });
 
   it('rejects an owner-mismatched generation package before charging', async () => {

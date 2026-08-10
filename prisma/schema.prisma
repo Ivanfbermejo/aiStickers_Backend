@@ -329,15 +329,22 @@ model GenerationJob {
 
 // Local ownership and Telegram remote-set identity. The remote set name and
 // sticker file IDs are server-owned; clients only submit local resource IDs.
+enum TelegramPackLinkStatus {
+  PENDING
+  ACTIVE
+  FAILED
+}
+
 model TelegramPackLink {
-  id             String   @id @default(uuid())
+  id             String                   @id @default(uuid())
   userId         String
   telegramUserId String
   packageId      String
-  setName        String   @unique
-  stickerFileIds Json     @default("{}")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  setName        String                   @unique
+  status         TelegramPackLinkStatus   @default(PENDING)
+  stickerFileIds Json                     @default("{}")
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
