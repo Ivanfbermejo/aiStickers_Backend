@@ -41,6 +41,7 @@ export class JsonTelegramPackLinkRepository extends ITelegramPackLinkRepository 
       setName: link.setName,
       status: link.status,
       stickerFileIds: link.stickerFileIds,
+      stickerIdOrder: link.stickerIdOrder,
       createdAt: link.createdAt,
       updatedAt: link.updatedAt
     };

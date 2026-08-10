@@ -59,6 +59,25 @@ function sendError(res, error, fallback) {
   return res.status(status).json({ error: fallback, message: error.message });
 }
 
+/**
+ * Rebuild stickerFileIds from the persisted local order and the remote
+ * sticker list, then mark the link ACTIVE. A retry must never leave a link
+ * ACTIVE with an empty stickerFileIds map, so this refuses to activate if
+ * the rebuilt map is empty.
+ */
+function activateLinkFromRemoteSet(link, remoteSet) {
+  const stickerFileIds = TelegramService.buildStickerFileIdsFromOrder(
+    link.stickerIdOrder,
+    remoteSet?.stickers || []
+  );
+  if (Object.keys(stickerFileIds).length === 0) {
+    throw new Error('Telegram sticker set has no matching stickers to link; refusing to activate');
+  }
+  link.setStickerFileIds(stickerFileIds);
+  link.markActive();
+  return stickerFileIds;
+}
+
 export const TelegramController = {
   /**
    * POST /api/v1/telegram/export-pack
@@ -85,38 +104,47 @@ export const TelegramController = {
       const { pkg, stickers, references } = await resolvePackageAndStickers({ userId, packageId, stickerIds });
       const botUsername = await TelegramService.getBotUsername();
       const setName = TelegramService.deriveSetName({ packageId, botUsername });
+      const stickerIdOrder = stickers.map(sticker => sticker.id);
 
       let link = await container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, packageId);
-      if (link) {
-        if (link.telegramUserId !== telegramIdentity.telegramUserId) {
-          return res.status(403).json({ error: 'Telegram link belongs to another Telegram account' });
-        }
-        if (link.status === 'active') {
-          const status = await TelegramService.getPackStatus({ setName: link.setName });
-          return res.status(200).json({
-            set_name: link.setName,
-            add_sticker_url: status.addStickerUrl,
-            sticker_count: status.stickerCount
-          });
-        }
-        if (link.status === 'pending') {
-          // Recover a prior attempt where the remote set may already exist.
-          try {
-            const status = await TelegramService.getPackStatus({ setName: link.setName });
-            link.markActive();
-            await container.repositories.telegramPackLink.update(link, userId);
-            return res.status(200).json({
-              set_name: link.setName,
-              add_sticker_url: status.addStickerUrl,
-              sticker_count: status.stickerCount
-            });
-          } catch {
-            // Remote set does not exist yet; continue to create it below.
-          }
-        }
+      if (link && link.telegramUserId !== telegramIdentity.telegramUserId) {
+        return res.status(403).json({ error: 'Telegram link belongs to another Telegram account' });
       }
 
-      if (!link) {
+      if (link && link.status === 'active') {
+        const status = await TelegramService.getPackStatus({ setName: link.setName });
+        return res.status(200).json({
+          set_name: link.setName,
+          add_sticker_url: status.addStickerUrl,
+          sticker_count: status.stickerCount
+        });
+      }
+
+      if (link && (link.status === 'pending' || link.status === 'failed')) {
+        // Recover a prior attempt: the remote set may already exist even
+        // though our local record never reached ACTIVE. Ambiguous results
+        // (timeouts, 429s, 5xxs) must never be read as "does not exist".
+        let remote;
+        try {
+          remote = await TelegramService.getRemoteSet({ setName: link.setName });
+        } catch (error) {
+          return sendError(res, error, 'Could not verify Telegram sticker set status; retry later');
+        }
+        if (remote.exists) {
+          activateLinkFromRemoteSet(link, remote.set);
+          await container.repositories.telegramPackLink.update(link, userId);
+          return res.status(200).json({
+            set_name: link.setName,
+            add_sticker_url: `https://t.me/addstickers/${link.setName}`,
+            sticker_count: remote.set?.stickers?.length || 0
+          });
+        }
+        // Telegram explicitly confirmed the set does not exist; fall through
+        // to (re)create it below.
+      }
+
+      const isNewLink = !link;
+      if (isNewLink) {
         link = TelegramPackLink.create({
           userId,
           telegramUserId: telegramIdentity.telegramUserId,
@@ -124,36 +152,73 @@ export const TelegramController = {
           setName,
           stickerFileIds: {}
         });
-        await container.repositories.telegramPackLink.save(link);
       }
+      // Persist the local sticker order before mutating the remote set so a
+      // later recovery can deterministically rebuild the file ID map.
+      link.setStickerIdOrder(stickerIdOrder);
+      await (isNewLink
+        ? container.repositories.telegramPackLink.save(link)
+        : container.repositories.telegramPackLink.update(link, userId));
 
-      let result;
       try {
-        result = await TelegramService.exportPack({
+        await TelegramService.createRemoteSet({
           telegramUserId: telegramIdentity.telegramUserId,
           setName,
           packTitle: pkg.name,
           stickerReferences: references
         });
       } catch (error) {
+        if (TelegramService.classifyTelegramError(error) === 'name_occupied') {
+          // The set already exists remotely (race, or a previous attempt
+          // whose creation succeeded but whose confirmation did not).
+          let remote;
+          try {
+            remote = await TelegramService.getRemoteSet({ setName: link.setName });
+          } catch (lookupError) {
+            return sendError(res, lookupError, 'Failed to export sticker pack to Telegram');
+          }
+          if (remote.exists) {
+            activateLinkFromRemoteSet(link, remote.set);
+            await container.repositories.telegramPackLink.update(link, userId);
+            return res.status(200).json({
+              set_name: link.setName,
+              add_sticker_url: `https://t.me/addstickers/${link.setName}`,
+              sticker_count: remote.set?.stickers?.length || 0
+            });
+          }
+          return sendError(res, error, 'Failed to export sticker pack to Telegram');
+        }
         link.markFailed();
         await container.repositories.telegramPackLink.update(link, userId);
         throw error;
       }
 
-      const stickerFileIds = {};
-      for (let index = 0; index < stickers.length; index += 1) {
-        const fileId = result.stickers[index]?.file_id;
-        if (fileId) stickerFileIds[stickers[index].id] = fileId;
+      // Creation succeeded remotely; confirm it and rebuild the file ID map
+      // before ever marking the link ACTIVE.
+      let remoteAfterCreate;
+      try {
+        remoteAfterCreate = await TelegramService.getRemoteSet({ setName: link.setName });
+      } catch (error) {
+        // The set was created but we could not confirm its stickers yet.
+        // Keep the link as-is (PENDING/FAILED) so the next attempt recovers
+        // it above instead of re-running createNewStickerSet.
+        return sendError(res, error, 'Sticker pack created but status could not be confirmed; retry to finish linking');
       }
-      link.setStickerFileIds(stickerFileIds);
-      link.markActive();
+      if (!remoteAfterCreate.exists) {
+        return sendError(
+          res,
+          new Error('Telegram did not confirm the sticker set after creation'),
+          'Failed to export sticker pack to Telegram'
+        );
+      }
+
+      activateLinkFromRemoteSet(link, remoteAfterCreate.set);
       await container.repositories.telegramPackLink.update(link, userId);
 
       return res.status(201).json({
-        set_name: result.setName,
-        add_sticker_url: result.addStickerUrl,
-        sticker_count: result.stickerCount
+        set_name: link.setName,
+        add_sticker_url: `https://t.me/addstickers/${link.setName}`,
+        sticker_count: remoteAfterCreate.set?.stickers?.length || 0
       });
     } catch (error) {
       console.error('[TelegramController] exportPack error:', error.message);

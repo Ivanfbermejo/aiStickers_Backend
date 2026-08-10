@@ -20,6 +20,7 @@ function toLink(raw) {
     setName: raw.setName,
     status: fromStatus(raw.status),
     stickerFileIds: raw.stickerFileIds || {},
+    stickerIdOrder: raw.stickerIdOrder || [],
     createdAt: raw.createdAt.toISOString(),
     updatedAt: raw.updatedAt.toISOString()
   });
@@ -34,6 +35,7 @@ function toData(link) {
     setName: link.setName,
     status: toStatus(link.status),
     stickerFileIds: link.stickerFileIds,
+    stickerIdOrder: link.stickerIdOrder,
     createdAt: new Date(link.createdAt),
     updatedAt: new Date(link.updatedAt)
   };

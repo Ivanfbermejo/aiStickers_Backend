@@ -1,24 +1,41 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { execSync } from 'node:child_process';
+import { hasTestDatabase, getBaseDatabaseUrl, migrateDeploy } from '../helpers/postgres.js';
 
-describe.skipIf(!process.env.DATABASE_URL)('PostgreSQL cross-tenant constraints', () => {
+describe.skipIf(!hasTestDatabase())('PostgreSQL cross-tenant constraints', () => {
   let prisma;
+  const createdUserIds = [];
 
   beforeAll(async () => {
-    execSync('npx prisma migrate deploy', { stdio: 'pipe' });
-    prisma = new PrismaClient({
-      datasources: { db: { url: process.env.DATABASE_URL } }
-    });
+    const databaseUrl = getBaseDatabaseUrl();
+    await migrateDeploy(databaseUrl);
+    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  });
+
+  afterEach(async () => {
+    // Cascades (packages -> telegram_pack_links/stickers, users -> packages)
+    // handle most cleanup; delete users last so FKs never block it.
+    for (const userId of createdUserIds.splice(0)) {
+      await prisma.user.deleteMany({ where: { id: userId } });
+    }
   });
 
   afterAll(async () => {
     await prisma?.$disconnect();
   });
 
+  async function createUser(overrides = {}) {
+    const user = await prisma.user.create({
+      data: { email: `${randomUUID()}@example.test`, ...overrides }
+    });
+    createdUserIds.push(user.id);
+    return user;
+  }
+
   it('rejects a telegram_pack_link that references a package owned by another user', async () => {
-    const userA = await prisma.user.create({ data: { email: 'pg-owner@example.com' } });
-    const userB = await prisma.user.create({ data: { email: 'pg-other@example.com' } });
+    const userA = await createUser();
+    const userB = await createUser();
     const pkg = await prisma.package.create({
       data: {
         userId: userA.id,
@@ -33,7 +50,7 @@ describe.skipIf(!process.env.DATABASE_URL)('PostgreSQL cross-tenant constraints'
         userId: userB.id,
         telegramUserId: '1',
         packageId: pkg.id,
-        setName: 'set_by_other_bot',
+        setName: `set_by_other_bot_${randomUUID()}`,
         status: 'PENDING'
       }
     })).rejects.toThrow();
@@ -43,7 +60,7 @@ describe.skipIf(!process.env.DATABASE_URL)('PostgreSQL cross-tenant constraints'
         userId: userA.id,
         telegramUserId: '1',
         packageId: pkg.id,
-        setName: 'set_by_owner_bot',
+        setName: `set_by_owner_bot_${randomUUID()}`,
         status: 'PENDING'
       }
     });
@@ -52,8 +69,8 @@ describe.skipIf(!process.env.DATABASE_URL)('PostgreSQL cross-tenant constraints'
   });
 
   it('rejects a sticker linked to a package owned by another user', async () => {
-    const userA = await prisma.user.create({ data: { email: 'pg-owner2@example.com' } });
-    const userB = await prisma.user.create({ data: { email: 'pg-other2@example.com' } });
+    const userA = await createUser();
+    const userB = await createUser();
     const pkg = await prisma.package.create({
       data: {
         userId: userA.id,

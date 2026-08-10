@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 const DISABLED_MESSAGE = 'Telegram sticker export is temporarily disabled';
 const TELEGRAM_API = 'https://api.telegram.org';
 const LOGIN_MAX_AGE_SECONDS = 24 * 60 * 60;
+const REQUEST_TIMEOUT_MS = 15000;
 
 function assertEnabled() {
   if (!env.ENABLE_TELEGRAM) {
@@ -12,6 +13,41 @@ function assertEnabled() {
   if (!env.TELEGRAM_BOT_TOKEN) {
     throw new Error('Telegram bot token is not configured');
   }
+}
+
+/**
+ * Raised for any non-2xx/non-ok response from the Telegram Bot API, and for
+ * transport-level failures (network errors, timeouts). `httpStatus` is only
+ * set when we actually got an HTTP response back from Telegram; its absence
+ * signals a transport failure, which must always be treated as ambiguous.
+ */
+export class TelegramApiError extends Error {
+  constructor(message, { httpStatus, errorCode, cause } = {}) {
+    super(message);
+    this.name = 'TelegramApiError';
+    this.httpStatus = httpStatus;
+    this.errorCode = errorCode;
+    if (cause) this.cause = cause;
+  }
+}
+
+const NOT_FOUND_PATTERNS = [/stickerset_invalid/i, /sticker set (is )?not found/i];
+const NAME_OCCUPIED_PATTERNS = [/already occupied/i, /name is occupied/i];
+
+/**
+ * Classify a TelegramApiError so callers can decide whether it is safe to
+ * treat the remote sticker set as definitively absent. Anything that is not
+ * an explicit, well-known "does not exist" response — including timeouts,
+ * 429s, 5xxs, and unrecognized 4xx bodies — is 'ambiguous' and must never be
+ * interpreted as non-existence.
+ */
+export function classifyTelegramError(error) {
+  if (!(error instanceof TelegramApiError) || error.httpStatus !== 400) {
+    return 'ambiguous';
+  }
+  if (NOT_FOUND_PATTERNS.some(pattern => pattern.test(error.message))) return 'not_found';
+  if (NAME_OCCUPIED_PATTERNS.some(pattern => pattern.test(error.message))) return 'name_occupied';
+  return 'ambiguous';
 }
 
 function safeEqualHex(left, right) {
@@ -61,14 +97,29 @@ export function deriveSetName({ packageId, botUsername }) {
 
 async function callTelegram(method, payload) {
   assertEnabled();
-  const response = await fetch(`${TELEGRAM_API}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${TELEGRAM_API}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } catch (error) {
+    // Network failure or timeout: we never learned Telegram's answer, so this
+    // must be treated as ambiguous by classifyTelegramError (no httpStatus).
+    throw new TelegramApiError(`Telegram ${method} request failed: ${error.message}`, { cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok !== true) {
-    throw new Error(body.description || `Telegram ${method} failed`);
+    throw new TelegramApiError(body.description || `Telegram ${method} failed`, {
+      httpStatus: response.status,
+      errorCode: body.error_code
+    });
   }
   return body.result;
 }
@@ -83,7 +134,14 @@ function inputSticker(reference) {
   return { sticker: reference, format: 'static', emoji_list: ['🙂'] };
 }
 
-export async function exportPack({ telegramUserId, setName, packTitle, stickerReferences } = {}) {
+/**
+ * Ask Telegram to create the sticker set. Callers must inspect
+ * `classifyTelegramError` on failure — in particular a 'name_occupied'
+ * classification means the set may already exist remotely (e.g. from a
+ * previous attempt that failed only while confirming the result) and should
+ * be recovered via `getRemoteSet` rather than treated as a hard failure.
+ */
+export async function createRemoteSet({ telegramUserId, setName, packTitle, stickerReferences } = {}) {
   assertEnabled();
   if (!telegramUserId || !setName || !packTitle || !Array.isArray(stickerReferences) || stickerReferences.length === 0) {
     throw new Error('Telegram pack export data is incomplete');
@@ -94,7 +152,46 @@ export async function exportPack({ telegramUserId, setName, packTitle, stickerRe
     title: packTitle,
     stickers: stickerReferences.map(inputSticker)
   });
-  const set = await callTelegram('getStickerSet', { name: setName });
+}
+
+/**
+ * Look up a remote sticker set. Resolves `{ exists: false }` only when
+ * Telegram explicitly confirms the set does not exist. Any ambiguous result
+ * (timeout, 429, 5xx, unrecognized error) is re-thrown so the caller never
+ * mistakes "we don't know" for "it doesn't exist".
+ */
+export async function getRemoteSet({ setName } = {}) {
+  assertEnabled();
+  if (!setName) throw new Error('setName is required');
+  try {
+    const set = await callTelegram('getStickerSet', { name: setName });
+    return { exists: true, set };
+  } catch (error) {
+    if (classifyTelegramError(error) === 'not_found') {
+      return { exists: false };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Rebuild the localId -> Telegram file_id map from the local sticker order
+ * persisted before the remote call and the sticker list Telegram returns.
+ * Telegram preserves upload order, so the Nth remote sticker corresponds to
+ * the Nth locally-ordered sticker ID.
+ */
+export function buildStickerFileIdsFromOrder(stickerIdOrder = [], remoteStickers = []) {
+  const stickerFileIds = {};
+  stickerIdOrder.forEach((localId, index) => {
+    const fileId = remoteStickers[index]?.file_id;
+    if (fileId) stickerFileIds[localId] = fileId;
+  });
+  return stickerFileIds;
+}
+
+export async function exportPack({ telegramUserId, setName, packTitle, stickerReferences } = {}) {
+  await createRemoteSet({ telegramUserId, setName, packTitle, stickerReferences });
+  const { set } = await getRemoteSet({ setName });
   return {
     setName,
     stickerCount: set?.stickers?.length || 0,
