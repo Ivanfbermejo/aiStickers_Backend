@@ -153,9 +153,14 @@ export const TelegramController = {
           stickerFileIds: {}
         });
       }
-      // Persist the local sticker order before mutating the remote set so a
-      // later recovery can deterministically rebuild the file ID map.
+      // Persist the local sticker order and reset the link to PENDING right
+      // before mutating the remote set — including when it was previously
+      // FAILED and Telegram just confirmed the set does not exist — so a
+      // later recovery can deterministically rebuild the file ID map and no
+      // link is ever left FAILED while a create attempt might still be
+      // in flight or ambiguous.
       link.setStickerIdOrder(stickerIdOrder);
+      link.markPending();
       await (isNewLink
         ? container.repositories.telegramPackLink.save(link)
         : container.repositories.telegramPackLink.update(link, userId));
@@ -168,7 +173,8 @@ export const TelegramController = {
           stickerReferences: references
         });
       } catch (error) {
-        if (TelegramService.classifyTelegramError(error) === 'name_occupied') {
+        const classification = TelegramService.classifyCreateSetError(error);
+        if (classification === 'name_occupied') {
           // The set already exists remotely (race, or a previous attempt
           // whose creation succeeded but whose confirmation did not).
           let remote;
@@ -188,6 +194,14 @@ export const TelegramController = {
           }
           return sendError(res, error, 'Failed to export sticker pack to Telegram');
         }
+        if (classification === 'ambiguous') {
+          // Transport failure/timeout, 429, or 5xx: we never learned whether
+          // Telegram actually created the set, so the link must stay
+          // PENDING. The next attempt will consult getRemoteSet before
+          // trying createNewStickerSet again.
+          return sendError(res, error, 'Failed to export sticker pack to Telegram; retry later');
+        }
+        // Telegram confirmed a definitive request error: no set was created.
         link.markFailed();
         await container.repositories.telegramPackLink.update(link, userId);
         throw error;

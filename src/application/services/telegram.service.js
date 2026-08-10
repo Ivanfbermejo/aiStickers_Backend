@@ -50,6 +50,29 @@ export function classifyTelegramError(error) {
   return 'ambiguous';
 }
 
+/**
+ * Classify a failure from `createRemoteSet` (createNewStickerSet) so callers
+ * know whether it is safe to mark the local link FAILED.
+ *
+ * - 'ambiguous': transport failure/timeout (no httpStatus), HTTP 429, or any
+ *   HTTP >=500. We never learned whether Telegram actually created the set,
+ *   so the link must stay PENDING and be re-checked via getRemoteSet before
+ *   any retry attempts to create it again.
+ * - 'name_occupied': Telegram confirmed the set name is already taken.
+ * - 'definitive_failure': Telegram returned an explicit request error (any
+ *   other HTTP response) that guarantees no set was created.
+ */
+export function classifyCreateSetError(error) {
+  if (!(error instanceof TelegramApiError) || error.httpStatus === undefined) {
+    return 'ambiguous';
+  }
+  if (error.httpStatus === 429 || error.httpStatus >= 500) {
+    return 'ambiguous';
+  }
+  if (NAME_OCCUPIED_PATTERNS.some(pattern => pattern.test(error.message))) return 'name_occupied';
+  return 'definitive_failure';
+}
+
 function safeEqualHex(left, right) {
   if (!/^[a-f0-9]{64}$/i.test(left) || !/^[a-f0-9]{64}$/i.test(right)) return false;
   return crypto.timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));

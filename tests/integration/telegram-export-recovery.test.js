@@ -62,6 +62,18 @@ function getSetRateLimitedResponse() {
   return telegramResponse({ ok: false, error_code: 429, description: 'Too Many Requests: retry after 1' }, 429);
 }
 
+function createSetRateLimitedResponse() {
+  return telegramResponse({ ok: false, error_code: 429, description: 'Too Many Requests: retry after 1' }, 429);
+}
+
+function createSetServerErrorResponse() {
+  return telegramResponse({ ok: false, error_code: 500, description: 'Internal Server Error' }, 500);
+}
+
+function transportTimeoutError() {
+  return new Error('The operation was aborted');
+}
+
 function queueFetch(...responses) {
   const queue = [...responses];
   const fetchSpy = vi.fn(() => {
@@ -308,6 +320,97 @@ describe('Telegram export-pack recovery', () => {
     const afterRetry = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
     expect(afterRetry.status).toBe('active');
     expect(afterRetry.stickerFileIds).toEqual({ [sticker.id]: 'file_retry' });
+  });
+
+  it('keeps the link PENDING when createNewStickerSet times out, then recovers on retry', async () => {
+    const pkg = await createPackageViaHttp(ctx.app, token, 'Pack I');
+    const sticker = await createStickerViaHttp(ctx.app, token, { packageId: pkg.id });
+    const setName = deriveSetName({ packageId: pkg.id, botUsername: BOT_USERNAME });
+
+    const fetchSpy = queueFetch(getMeResponse(), transportTimeoutError());
+
+    const firstAttempt = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(firstAttempt.status).toBeGreaterThanOrEqual(500);
+    // The transport failure must not be read as a definitive request error,
+    // so the link must never be marked FAILED for a timeout.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const afterFirstAttempt = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterFirstAttempt.status).toBe('pending');
+    expect(afterFirstAttempt.stickerFileIds).toEqual({});
+    expect(afterFirstAttempt.stickerIdOrder).toEqual([sticker.id]);
+
+    vi.unstubAllGlobals();
+    const retrySpy = queueFetch(getMeResponse(), getSetOkResponse(setName, ['file_after_timeout']));
+
+    const retry = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(retry.status).toBe(200);
+    // The retry must consult getStickerSet before ever calling
+    // createNewStickerSet again.
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('createNewStickerSet'))).toBe(false);
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('getStickerSet'))).toBe(true);
+
+    const afterRetry = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterRetry.status).toBe('active');
+    expect(afterRetry.stickerFileIds).toEqual({ [sticker.id]: 'file_after_timeout' });
+  });
+
+  it('keeps the link PENDING when createNewStickerSet returns 429, then recovers on retry', async () => {
+    const pkg = await createPackageViaHttp(ctx.app, token, 'Pack J');
+    const sticker = await createStickerViaHttp(ctx.app, token, { packageId: pkg.id });
+    const setName = deriveSetName({ packageId: pkg.id, botUsername: BOT_USERNAME });
+
+    const fetchSpy = queueFetch(getMeResponse(), createSetRateLimitedResponse());
+
+    const firstAttempt = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(firstAttempt.status).toBeGreaterThanOrEqual(500);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const afterFirstAttempt = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterFirstAttempt.status).toBe('pending');
+    expect(afterFirstAttempt.stickerFileIds).toEqual({});
+    expect(afterFirstAttempt.stickerIdOrder).toEqual([sticker.id]);
+
+    vi.unstubAllGlobals();
+    const retrySpy = queueFetch(getMeResponse(), getSetOkResponse(setName, ['file_after_429']));
+
+    const retry = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(retry.status).toBe(200);
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('createNewStickerSet'))).toBe(false);
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('getStickerSet'))).toBe(true);
+
+    const afterRetry = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterRetry.status).toBe('active');
+    expect(afterRetry.stickerFileIds).toEqual({ [sticker.id]: 'file_after_429' });
+  });
+
+  it('keeps the link PENDING when createNewStickerSet returns a 500, then recovers on retry', async () => {
+    const pkg = await createPackageViaHttp(ctx.app, token, 'Pack K');
+    const sticker = await createStickerViaHttp(ctx.app, token, { packageId: pkg.id });
+    const setName = deriveSetName({ packageId: pkg.id, botUsername: BOT_USERNAME });
+
+    const fetchSpy = queueFetch(getMeResponse(), createSetServerErrorResponse());
+
+    const firstAttempt = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(firstAttempt.status).toBeGreaterThanOrEqual(500);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const afterFirstAttempt = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterFirstAttempt.status).toBe('pending');
+    expect(afterFirstAttempt.stickerFileIds).toEqual({});
+    expect(afterFirstAttempt.stickerIdOrder).toEqual([sticker.id]);
+
+    vi.unstubAllGlobals();
+    const retrySpy = queueFetch(getMeResponse(), getSetOkResponse(setName, ['file_after_500']));
+
+    const retry = await exportPackRequest(ctx.app, token, { packageId: pkg.id, stickerIds: [sticker.id], telegramUserId });
+    expect(retry.status).toBe(200);
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('createNewStickerSet'))).toBe(false);
+    expect(retrySpy.mock.calls.some(([url]) => String(url).includes('getStickerSet'))).toBe(true);
+
+    const afterRetry = await ctx.container.repositories.telegramPackLink.findByUserIdAndPackageId(userId, pkg.id);
+    expect(afterRetry.status).toBe('active');
+    expect(afterRetry.stickerFileIds).toEqual({ [sticker.id]: 'file_after_500' });
   });
 
   it('rejects a foreign package before any Telegram call', async () => {
