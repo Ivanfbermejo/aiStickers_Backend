@@ -15,6 +15,7 @@
         "test:unit": "vitest run tests/unit",
         "test:integration": "vitest run tests/integration",
         "test:coverage": "vitest run --coverage",
+        "production:preflight": "node scripts/production-preflight.js",
         "assets:migrate": "node scripts/migrate-uploads.js",
         "prisma:migrate:deploy": "prisma migrate deploy",
         "prisma:migrate:dev": "prisma migrate dev",

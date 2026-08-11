@@ -2,7 +2,7 @@
 
 This repository uses GitHub Actions to protect the existing API contract, avoid
 insecure code patterns, and verify that the backend can start with safe dummy
-credentials in CI.
+credentials in CI. All workflows use Node 24.
 
 ## Workflows
 
@@ -12,9 +12,15 @@ Runs on every PR and push to `main`:
 
 - Installs dependencies with `npm ci`.
 - Runs `node --check index.js` to catch syntax errors.
-- Runs tests if a `test` script is present.
-- Starts the server with dummy environment variables and checks the
-  `/health` endpoint.
+- Runs the complete `npm test` suite, including the real PostgreSQL/MinIO
+  restore drill.
+- Runs the security scan and API contract check.
+- Validates development and production Compose files.
+- Runs the non-destructive production preflight with disposable values.
+- Builds and runs the production Docker image against disposable PostgreSQL,
+  Redis and MinIO containers, including migrations, readiness, protected
+  metrics, non-root execution and SIGTERM shutdown.
+- Runs `npm audit --omit=dev` and uploads the JSON report as an artifact.
 
 Also starts a `postgres:16-alpine` service container so the real-database
 tests under `tests/integration/postgres/` run (migrations, constraints,
@@ -30,7 +36,7 @@ most common cause is a missing `import` or an unhandled exception during
 
 Runs on every PR and push to `main`:
 
-- Runs `npm audit --audit-level=high` (reported but not blocking by default).
+- Runs `npm audit --omit=dev` as a blocking check.
 - Scans source files for:
   - Insecure fallbacks such as `JWT_SECRET || 'some-string'`.
   - Hardcoded secrets for sensitive variables (JWT, client secrets, API tokens,
@@ -58,6 +64,7 @@ Runs on every PR and push to `main`:
 - Verifies that `package.json` has a `start` script.
 - Starts the server with a non-default port and dummy environment variables.
 - Confirms that the process only writes inside the configured `DATA_DIR`.
+- Repeats the production Compose, preflight and Docker image smoke checks.
 
 ## Dummy CI values
 
@@ -79,10 +86,14 @@ DATA_DIR: ./tmp-data
 ```bash
 npm ci
 node --check index.js
+npm test
 node scripts/security-scan.js
 node scripts/api-contract-check.js
+npm run production:preflight
+node scripts/docker-production-smoke.js
 node scripts/smoke-start.js
 node scripts/deploy-sanity-check.js
+npm audit --omit=dev
 ```
 
 The smoke and deploy-sanity scripts use `DATA_DIR=./tmp-data` by default. They

@@ -21,7 +21,11 @@ const beforeDirs = new Set(readdirSync('.').filter(entry => statSync(entry).isDi
 
 const child = spawn('node', ['index.js'], {
   stdio: 'pipe',
-  env: process.env
+  env: {
+    ...process.env,
+    PORT: String(PORT),
+    DATA_DIR
+  }
 });
 
 let output = '';

@@ -3,7 +3,12 @@ services:
     build: .
     image: aistickers-backend:dev
     env_file:
-      - .env.docker
+      # The example keeps `docker compose config` usable in a clean checkout;
+      # an ignored .env.docker, when present, overrides it for local runs.
+      - path: .env.docker.example
+        required: true
+      - path: .env.docker
+        required: false
     environment:
       NODE_ENV: development
       PORT: "2002"
@@ -43,7 +48,10 @@ services:
     image: aistickers-backend:dev
     command: ["npm", "run", "worker:generation"]
     env_file:
-      - .env.docker
+      - path: .env.docker.example
+        required: true
+      - path: .env.docker
+        required: false
     environment:
       NODE_ENV: development
       DATA_DIR: /app/data
