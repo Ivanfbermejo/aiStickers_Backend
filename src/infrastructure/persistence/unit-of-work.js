@@ -1,5 +1,6 @@
 import { getPrismaClient } from './prisma/client.js';
 import { env } from '../../config/env.js';
+import { getLogger } from '../observability/logger.js';
 
 /**
  * Unit-of-work abstraction.
@@ -49,7 +50,7 @@ export class JsonUnitOfWork extends UnitOfWork {
     // The JSON driver is intentionally not used in production (factory throws).
     // In development/test we run operations sequentially so the application
     // remains usable, but there is no real rollback if a later step fails.
-    console.warn(
+    getLogger().warn(
       '[JsonUnitOfWork] Financial operation running without transaction safety. Use PostgreSQL in production.'
     );
     return callback(this.repositories);

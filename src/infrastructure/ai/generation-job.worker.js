@@ -1,4 +1,5 @@
 import { ProviderError } from './provider-error.js';
+import { metrics } from '../observability/metrics.js';
 
 function safeErrorMessage(error) {
   if (error?.code === 'PROVIDER_TIMEOUT') return 'Generation provider timed out';
@@ -185,6 +186,7 @@ export class GenerationJobWorker {
         providerPredictionId: job.providerPredictionId || result.providerPredictionId
       });
       await this.generationJobRepository.update(job);
+      metrics.aiCost(job.provider || 'replicate', job.type, result?.costUsd);
       return { completed: true, jobId: job.id };
     } catch (error) {
       if (terminalError(error)) {

@@ -39,4 +39,12 @@ export class AssetStorage {
   async getSignedUrl(key, expiresInSeconds = 300) {
     throw new Error('getSignedUrl is not implemented');
   }
+
+  /**
+   * Probe the storage backend without exposing secrets or object contents.
+   * Throws if the backend is unreachable.
+   */
+  async checkReady() {
+    throw new Error('checkReady is not implemented');
+  }
 }

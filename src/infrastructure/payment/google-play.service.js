@@ -1,5 +1,7 @@
 import { google } from 'googleapis';
 import { env } from '../../config/env.js';
+import { getLogger } from '../observability/logger.js';
+import { metrics } from '../observability/metrics.js';
 
 /**
  * Google Play Payment Provider Service
@@ -31,7 +33,7 @@ export class GooglePlayPaymentService {
         auth
       });
     } catch (error) {
-      console.warn('Google Play service initialization failed, using test mode:', error.message);
+      getLogger().warn({ err: error }, 'Google Play service initialization failed, using test mode:');
       this.androidPublisher = null;
       this.isTestMode = true;
     }
@@ -55,7 +57,7 @@ export class GooglePlayPaymentService {
     // Test mode — no service account configured and no injected client.
     // Cannot verify the real purchase state, so we treat it as pending.
     if (this.isTestMode || !this.androidPublisher) {
-      console.warn('[GooglePlay] No Android Publisher client configured — purchase validation pending.');
+      getLogger().warn('[GooglePlay] No Android Publisher client configured — purchase validation pending.');
       return {
         valid: false,
         pending: true,
@@ -115,7 +117,7 @@ export class GooglePlayPaymentService {
       const status = error?.response?.status;
       const isNotFound = status === 404;
 
-      console.error(`[GooglePlay] Validation error (status=${status})`);
+      getLogger().error(`[GooglePlay] Validation error (status=${status})`);
 
       if (isNotFound) {
         return {

@@ -1,5 +1,6 @@
 import { container } from '../../../config/container.js';
 import { TelegramPackLink } from '../../../domain/entities/telegram-pack-link.entity.js';
+import { getLogger } from '../../observability/logger.js';
 import * as TelegramService from '../../../application/services/telegram.service.js';
 
 function userIdFromRequest(req) {
@@ -235,7 +236,7 @@ export const TelegramController = {
         sticker_count: remoteAfterCreate.set?.stickers?.length || 0
       });
     } catch (error) {
-      console.error('[TelegramController] exportPack error:', error.message);
+      getLogger().error({ err: error }, '[TelegramController] exportPack error:');
       return sendError(res, error, 'Failed to export sticker pack to Telegram');
     }
   },
@@ -312,7 +313,7 @@ export const TelegramController = {
         add_sticker_url: result.addStickerUrl
       });
     } catch (error) {
-      console.error('[TelegramController] reconcilePack error:', error.message);
+      getLogger().error({ err: error }, '[TelegramController] reconcilePack error:');
       return sendError(res, error, 'Failed to reconcile Telegram sticker pack');
     }
   },
@@ -336,7 +337,7 @@ export const TelegramController = {
         add_sticker_url: result.addStickerUrl
       });
     } catch (error) {
-      console.error('[TelegramController] getPackStatus error:', error.message);
+      getLogger().error({ err: error }, '[TelegramController] getPackStatus error:');
       return sendError(res, error, 'Failed to get Telegram pack status');
     }
   }

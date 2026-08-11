@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
+import { metrics } from '../../observability/metrics.js';
 
 const HMAC_V2 = '2';
 const UUID_NONCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,7 +136,8 @@ export class HmacMiddleware {
       };
       return next();
     } catch (error) {
-      console.error('HMAC verify error:', error.message);
+      getLogger().error({ err: error }, 'HMAC verify error');
+      metrics.authFailure('hmac');
       return res.status(503).json({
         error: 'Security service unavailable',
         message: 'Request temporarily unavailable'
@@ -145,7 +148,8 @@ export class HmacMiddleware {
   getMiddleware() {
     return (req, res, next) => {
       this.verify(req, res, next).catch(error => {
-        console.error('[HMAC] Unhandled error:', error.message);
+        getLogger().error({ err: error }, '[HMAC] unhandled error');
+        metrics.authFailure('hmac');
         res.status(503).json({
           error: 'Security service unavailable',
           message: 'Request temporarily unavailable'

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { GenerationJob } from '../../../domain/entities/generation-job.entity.js';
 import { IGenerationJobRepository } from '../../../domain/repositories/generation-job.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON GenerationJob Repository Implementation
@@ -29,7 +30,7 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load generation jobs:', err);
+      getLogger().error({ err }, 'Failed to load generation jobs:');
       this.cache = new Map();
     }
   }

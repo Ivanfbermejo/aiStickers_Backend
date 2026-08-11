@@ -25,7 +25,7 @@ services:
     cpus: "1.0"
     mem_limit: 1g
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2002/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:2002/health/ready').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -37,8 +37,9 @@ services:
         max-file: "3"
 
   # The HTTP process only produces BullMQ jobs. It never starts a consumer.
+  # Uses the image built by the backend service to avoid duplicate builds on
+  # Docker engines without buildx.
   worker:
-    build: .
     image: aistickers-backend:dev
     command: ["npm", "run", "worker:generation"]
     env_file:
@@ -69,10 +70,12 @@ services:
         max-file: "3"
 
   # PostgreSQL is the durable source of truth for production and worker jobs.
-  # Intentionally has NO "ports:" mapping: only reachable from other
-  # containers on the compose network, never from the host or the internet.
+  # For local development and integration tests it is bound to 127.0.0.1 so the
+  # host test runner can reach it; production must never expose the port.
   db:
     image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
     # POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB come from .env.docker
     # (the official postgres image reads them directly from its own
     # environment; no compose-level interpolation is used here on purpose).
@@ -98,10 +101,12 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Durable BullMQ transport. No ports mapping: reachable only on the
-  # internal Compose network, never from the host or the public internet.
+  # Durable BullMQ transport. Bound to 127.0.0.1 for local tests only;
+  # production must keep Redis inside the private network.
   redis:
     image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     volumes:
       - aistickers_dev_redis:/data

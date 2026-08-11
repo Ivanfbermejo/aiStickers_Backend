@@ -186,6 +186,15 @@ export function loadConfig(rawEnv = process.env) {
     DATA_DIR: rawEnv.DATA_DIR || '/var/www/aiStickers_Backend/data',
     TRUST_PROXY: parseTrustProxy(rawEnv.TRUST_PROXY),
 
+    LOG_LEVEL: rawEnv.LOG_LEVEL || '',
+    SHUTDOWN_TIMEOUT_MS: parsePositiveInt(rawEnv.SHUTDOWN_TIMEOUT_MS, 30000, 'SHUTDOWN_TIMEOUT_MS', 300000),
+
+    METRICS_ENABLED: parseBooleanFlag(rawEnv.METRICS_ENABLED, false),
+    METRICS_BEARER_TOKEN: rawEnv.METRICS_BEARER_TOKEN || '',
+
+    ERROR_TRACKING_ENABLED: parseBooleanFlag(rawEnv.ERROR_TRACKING_ENABLED, false),
+    SENTRY_DSN: rawEnv.SENTRY_DSN || '',
+
     // Persistence: JSON files by default; PostgreSQL is mandatory in production
     // (see validateEnv). Repositories still read/write JSON until T05B.
     PERSISTENCE_DRIVER: parsePersistenceDriver(rawEnv.PERSISTENCE_DRIVER),
@@ -362,6 +371,17 @@ export function validateEnv(config) {
 
   if (config.ENABLE_TELEGRAM) {
     requireString('TELEGRAM_BOT_TOKEN', 1);
+  }
+
+  if (config.METRICS_ENABLED) {
+    requireString('METRICS_BEARER_TOKEN', 16);
+    if (config.METRICS_BEARER_TOKEN === config.CLIENT_SECRET) {
+      throw new Error('METRICS_BEARER_TOKEN must not be the same as CLIENT_SECRET');
+    }
+  }
+
+  if (config.ERROR_TRACKING_ENABLED) {
+    requireString('SENTRY_DSN', 1);
   }
 }
 

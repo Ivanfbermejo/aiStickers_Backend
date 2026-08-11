@@ -9,13 +9,21 @@ import fs from 'fs';
 // Configuration
 import { env, validateEnv } from './config/env.js';
 import { container } from './config/container.js';
-import { pingDatabase, disconnectPrisma } from './infrastructure/persistence/prisma/client.js';
+import { disconnectPrisma } from './infrastructure/persistence/prisma/client.js';
+
+// Observability
+import { rootLogger, getLogger } from './infrastructure/observability/logger.js';
+import { metrics } from './infrastructure/observability/metrics.js';
+import { runReadinessChecks } from './infrastructure/observability/health-checks.js';
 
 // Middleware
 import { requireHmac } from './infrastructure/web/middleware/hmac.middleware.js';
 import { requireAuth, requireUser, optionalUser } from './infrastructure/web/middleware/auth.middleware.js';
+import { correlationMiddleware } from './infrastructure/web/middleware/correlation.middleware.js';
+import { requestMetricsMiddleware } from './infrastructure/web/middleware/request-metrics.middleware.js';
 import { redisSecurityService } from './infrastructure/security/redis-security.service.js';
 import { limitActiveGenerations, rateLimitIp, rateLimitUser } from './infrastructure/web/middleware/rate-limit.middleware.js';
+import { metricsEndpointHandler } from './infrastructure/web/middleware/metrics-endpoint.middleware.js';
 
 // Controllers
 import { AuthController } from './infrastructure/web/controllers/auth.controller.js';
@@ -47,6 +55,10 @@ export async function createApp() {
   app.set('trust proxy', env.TRUST_PROXY);
   app.locals.container = container;
   app.locals.redisSecurity = redisSecurityService;
+  app.locals.activeRequests = 0;
+  app.locals.shuttingDown = false;
+  app.locals.shutdownDone = false;
+  app.locals.shutdownPromise = null;
 
   // CORS - wildcard only in development; explicit origins in production
   const corsOrigins = env.CORS_ORIGINS;
@@ -72,6 +84,10 @@ export async function createApp() {
   // Security headers
   app.use(helmet());
 
+  // Request correlation and metrics must be early so every handler inherits them.
+  app.use(correlationMiddleware);
+  app.use(requestMetricsMiddleware);
+
   // Configure multer for file uploads
   const uploadsDir = path.join(env.DATA_DIR, 'uploads');
   if (!fs.existsSync(uploadsDir)) {
@@ -88,17 +104,13 @@ export async function createApp() {
       files: 1
     },
     fileFilter: (req, file, cb) => {
-      console.log('[Multer] File received:', {
-        fieldname: file.fieldname,
-        originalname: file.originalname,
-        mimetype: file.mimetype
-      });
+      getLogger().debug({
+        file: { fieldname: file.fieldname, mimetype: file.mimetype }
+      }, 'multer file received');
       // Accept only images
       if (file.mimetype.startsWith('image/')) {
-        console.log('[Multer] Image accepted');
         cb(null, true);
       } else {
-        console.log('[Multer] Rejected - not an image');
         cb(new Error('Only image files are allowed'));
       }
     }
@@ -114,15 +126,13 @@ export async function createApp() {
   // NOTE: This only applies to JSON requests, multipart is handled separately
   app.use((req, res, next) => {
     const contentType = req.headers['content-type'] || '';
-    console.log(`[BodyParser] ${req.method} ${req.path} Content-Type: ${contentType}`);
 
     // Skip body parsing for multipart requests - let multer handle them
     if (contentType.includes('multipart/form-data')) {
-      console.log('[BodyParser] Skipping JSON parser for multipart');
       return next();
     }
+
     // For JSON and other requests, use standard body parser
-    console.log('[BodyParser] Using JSON parser');
     express.json({
       limit: '5mb',
       verify: (req, res, buf) => {
@@ -133,9 +143,8 @@ export async function createApp() {
 
   // Initialize dependency container
   await container.initialize();
-  console.log('aiStickers Backend - Clean Architecture');
-  console.log(`Environment: ${env.NODE_ENV}`);
-  console.log(`Data Directory: ${env.DATA_DIR}`);
+  rootLogger.info('aiStickers Backend - Clean Architecture');
+  rootLogger.info({ nodeEnv: env.NODE_ENV, dataDir: env.DATA_DIR }, 'server environment');
 
   // ========== ROUTES ==========
 
@@ -149,25 +158,27 @@ export async function createApp() {
   });
 
   app.get('/health/ready', async (req, res) => {
-    try {
-      const probeFile = path.join(env.DATA_DIR, 'uploads', '.ready-probe');
-      await fs.promises.writeFile(probeFile, new Date().toISOString());
-      await fs.promises.rm(probeFile, { force: true });
+    const result = await runReadinessChecks({
+      redisSecurity: app.locals.redisSecurity,
+      storage: app.locals.container?.services?.assetStorage,
+      queueProducer: app.locals.container?.services?.generationQueue,
+      timeoutMs: 2000
+    });
 
-      // Only probe Postgres when it is actually configured. JSON remains the
-      // default persistence in development until T05B cuts repositories over.
-      if (env.DATABASE_URL) {
-        await pingDatabase();
-      }
-
-      await app.locals.redisSecurity.checkReady();
-
-      res.json({ status: 'ready', timestamp: new Date().toISOString() });
-    } catch (error) {
-      console.error('Readiness probe failed:', error);
-      res.status(503).json({ status: 'not ready', error: error.message });
+    for (const component of result.components) {
+      metrics.dependencyReady(component.name, component.status === 'ok');
     }
+
+    if (result.status === 'ready') {
+      return res.json({ status: 'ready', components: result.components });
+    }
+
+    getLogger().warn({ failed: result.failed }, 'readiness probe failed');
+    return res.status(503).json({ status: 'not ready', components: result.components });
   });
+
+  // Prometheus metrics (disabled by default; protected by bearer token when enabled)
+  app.get('/metrics', metricsEndpointHandler);
 
   // --- Authentication ---
   // App Token (HMAC only)
@@ -218,25 +229,16 @@ export async function createApp() {
   app.get('/api/v1/users/me/assets', requireHmac, requireUser, BalanceController.getUserAssets);
 
   // --- AI Sticker Generation (HMAC + User JWT required) ---
-  // Debug middleware to track request flow
-  const logRequestFlow = (req, res, next) => {
-    console.log('[RequestFlow] Reached multer middleware');
-    console.log('[RequestFlow] Content-Type:', req.headers['content-type']);
-    console.log('[RequestFlow] Content-Length:', req.headers['content-length']);
-    next();
-  };
-
   // Multer error handler wrapper
   const handleMulterError = (err, req, res, next) => {
     if (err instanceof multer.MulterError) {
-      console.error('[Multer Error]', err.code, err.message);
+      getLogger().warn({ err: err, code: err.code }, 'multer error');
       return res.status(400).json({ error: 'File upload error', message: err.message });
     }
     if (err) {
-      console.error('[Upload Error]', err.message);
+      getLogger().warn({ err: err }, 'upload error');
       return res.status(400).json({ error: 'Upload error', message: err.message });
     }
-    console.log('[RequestFlow] Multer completed, req.file:', req.file ? 'present' : 'undefined');
     next();
   };
 
@@ -272,7 +274,7 @@ export async function createApp() {
     failClosed: true
   });
 
-  app.post('/api/v1/ai/process-image', rejectLegacyMultipartInProduction, requireHmac, requireUser, generationRateLimit, uploadRateLimit, activeGenerationLimit, logRequestFlow, upload.single('image'), handleMulterError, AiController.processImage);
+  app.post('/api/v1/ai/process-image', rejectLegacyMultipartInProduction, requireHmac, requireUser, generationRateLimit, uploadRateLimit, activeGenerationLimit, upload.single('image'), handleMulterError, AiController.processImage);
   app.post('/api/v1/ai/img2vid', requireHmac, requireUser, generationRateLimit, activeGenerationLimit, AiController.img2vid);
   app.get('/api/v1/ai/status/:predictionId', requireHmac, requireUser, statusRateLimit, AiController.getStatus);
 
@@ -320,12 +322,24 @@ export async function createApp() {
 
   // --- Error Handling ---
   app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
+    getLogger().error({ err: err, req: { method: req.method, route: req.route?.path } }, 'unhandled error');
     res.status(500).json({
       error: 'Internal server error',
       message: env.NODE_ENV === 'development' ? err.message : undefined
     });
   });
+
+  // Test-only endpoints for integration tests that need a real HTTP server.
+  // They are only registered in the test environment and never in production.
+  if (env.NODE_ENV === 'test') {
+    app.get('/__test/ok', (req, res) => {
+      const delay = Number(req.query.delay) || 200;
+      setTimeout(() => res.send('ok'), delay);
+    });
+    app.get('/__test/hang', () => {
+      // Intentionally never responds; used to exercise shutdown timeouts.
+    });
+  }
 
   // 404 Handler
   app.use((req, res) => {
@@ -340,52 +354,113 @@ export async function createApp() {
  * `npm run worker:generation`; this process is producer-only.
  */
 export async function startServer(options = {}) {
-  const { app, container } = await createApp();
+  let { app, container } = options;
+  if (!app || !container) {
+    ({ app, container } = await createApp());
+  }
 
   const PORT = options.port ?? env.PORT;
   const HOST = options.host ?? '0.0.0.0';
+  const sockets = new Set();
 
-  const server = app.listen(PORT, HOST, () => {
-    console.log(`Server running on http://${HOST}:${PORT}`);
-    console.log('\nAvailable Endpoints:');
-    console.log('  POST /api/v1/auth/token           (HMAC)        - App authentication');
-    console.log('  POST /api/v1/auth/google          (HMAC)        - Google Sign-In');
-    console.log('  GET  /api/v1/auth/me              (HMAC+User)   - Validate session');
-    console.log('  POST /api/v1/auth/refresh         (HMAC)        - Refresh JWT token');
-    console.log('  POST /api/v1/auth/logout          (HMAC+User)   - Logout');
-    console.log('  GET  /api/v1/config               (HMAC)        - Public config');
-    console.log('  GET  /api/v1/i18n/:lang           (HMAC)        - Translations');
-    console.log('  GET  /api/v1/plans                (HMAC+User)   - Purchase plans');
-    console.log('  POST /api/v1/payments/validate/*  (HMAC+User)   - Validate purchases');
-    console.log('  GET  /api/v1/users/balance        (HMAC+User)   - User balance');
-    console.log('  GET  /api/v1/users/me/assets     (HMAC+User)   - User assets (balance+stickers+packages)');
-    console.log('  GET  /api/v1/users/balance/history (HMAC+User)  - Transaction history');
-    console.log('  POST /api/v1/ai/process-image     (HMAC+User)   - Generate sticker from image');
-    console.log('  POST /api/v1/ai/img2vid           (HMAC+User)   - Generate video from image');
-    console.log('  GET  /api/v1/ai/status/:id        (HMAC+User)   - Check generation status');
-    console.log('  GET  /api/v1/stickers             (HMAC+User)   - List user stickers');
-    console.log('  GET  /api/v1/stickers/:id         (HMAC+User)   - Get sticker by ID');
-    console.log('  POST /api/v1/stickers             (HMAC+User)   - Create sticker manually');
-    console.log('  PUT  /api/v1/stickers/:id         (HMAC+User)   - Update sticker');
-    console.log('  DEL  /api/v1/stickers/:id         (HMAC+User)   - Delete sticker');
-    console.log('  GET  /api/v1/packages             (HMAC+User)   - List user packages');
-    console.log('  GET  /api/v1/packages/public      (HMAC)        - List public packages');
-    console.log('  GET  /api/v1/packages/:id         (HMAC+User)   - Get package by ID');
-    console.log('  POST /api/v1/packages             (HMAC+User)   - Create package');
-    console.log('  PUT  /api/v1/packages/:id         (HMAC+User)   - Update package');
-    console.log('  DEL  /api/v1/packages/:id         (HMAC+User)   - Delete package');
-    console.log('\nSecurity: All endpoints require HMAC + User JWT for sensitive operations\n');
+  const server = app.listen(PORT, HOST);
+
+  await new Promise((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
   });
 
-  return { app, server, container };
+  const address = server.address();
+  rootLogger.info({ host: HOST, port: address?.port ?? PORT }, 'server listening');
+  rootLogger.info('Available endpoints loaded');
+
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+
+  return { app, server, container, sockets };
+}
+
+async function waitWithTimeout(promise, timeoutMs, onTimeout) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(onTimeout()), timeoutMs))
+  ]);
 }
 
 /**
  * Gracefully stop the HTTP producer process.
+ * Returns true if shutdown completed cleanly, false if it had to be forced.
+ * Calling stopServer multiple times for the same app returns the same promise.
  */
-export async function stopServer({ server, container }) {
-  await new Promise((resolve) => server.close(() => resolve()));
-  await container.services.generationQueue?.close();
-  await redisSecurityService.close();
-  await disconnectPrisma();
+export function stopServer({ app, server, container, sockets = new Set(), timeoutMs: timeoutMsOption } = {}) {
+  if (!server || app?.locals?.shutdownDone) {
+    return Promise.resolve(true);
+  }
+
+  if (app?.locals?.shutdownPromise) {
+    return app.locals.shutdownPromise;
+  }
+
+  app.locals.shutdownPromise = (async () => {
+    app.locals.shuttingDown = true;
+
+    const timeoutMs = timeoutMsOption ?? env.SHUTDOWN_TIMEOUT_MS;
+    const deadline = Date.now() + timeoutMs;
+    let forced = false;
+    const forceTimer = setTimeout(() => {
+      forced = true;
+      getLogger().warn('shutdown timeout reached, forcing sockets closed');
+      for (const socket of sockets) {
+        try {
+          socket.destroy();
+        } catch {
+          // ignored
+        }
+      }
+      try {
+        server.closeAllConnections?.();
+      } catch {
+        // ignored
+      }
+    }, timeoutMs);
+
+    try {
+
+      await new Promise((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+
+
+      // Wait for in-flight requests to finish.
+      while (
+        (app?.locals?.activeRequests || 0) > 0 &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      if ((app?.locals?.activeRequests || 0) > 0) {
+        forced = true;
+        getLogger().warn('requests still active after shutdown timeout');
+      }
+
+      await container?.services?.generationQueue?.close?.();
+      await container?.services?.assetStorage?.close?.();
+      const redisSecurity = app?.locals?.redisSecurity ?? redisSecurityService;
+      await redisSecurity.close();
+      await disconnectPrisma();
+
+      if (app) app.locals.shutdownDone = true;
+      return !forced;
+    } catch (error) {
+      rootLogger.error({ err: error }, 'shutdown error');
+      return false;
+    } finally {
+      clearTimeout(forceTimer);
+    }
+  })();
+
+  return app.locals.shutdownPromise;
 }

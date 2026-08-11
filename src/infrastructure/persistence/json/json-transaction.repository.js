@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Transaction } from '../../../domain/entities/transaction.entity.js';
 import { ITransactionRepository } from '../../../domain/repositories/transaction.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Transaction Repository Implementation
@@ -29,7 +30,7 @@ export class JsonTransactionRepository extends ITransactionRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load transactions:', err);
+      getLogger().error({ err }, 'Failed to load transactions:');
       this.cache = new Map();
     }
   }

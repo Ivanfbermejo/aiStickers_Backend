@@ -1,5 +1,6 @@
 import { Purchase } from '../../../domain/entities/purchase.entity.js';
 import { Transaction } from '../../../domain/entities/transaction.entity.js';
+import { metrics } from '../../../infrastructure/observability/metrics.js';
 
 /**
  * Validate Purchase Use Case
@@ -58,7 +59,7 @@ export class ValidatePurchaseUseCase {
     });
 
     if (validationResult.pending) {
-      return this.unitOfWork.run(async (repos) => {
+      const result = await this.unitOfWork.run(async (repos) => {
         const existing = await repos.purchase.findByToken(purchaseToken);
         if (existing) {
           const balance = await repos.balance.findByUserId(userId);
@@ -97,7 +98,6 @@ export class ValidatePurchaseUseCase {
         });
         purchase.markPending();
         await repos.purchase.save(purchase);
-
         const balance = await repos.balance.findByUserId(userId);
         return {
           success: false,
@@ -108,6 +108,8 @@ export class ValidatePurchaseUseCase {
           message: 'Purchase is being verified. Balance will update once confirmed.'
         };
       });
+      if (!result.isDuplicate) metrics.purchaseState('PENDING');
+      return result;
     }
 
     if (!validationResult.valid) {
@@ -134,13 +136,12 @@ export class ValidatePurchaseUseCase {
         });
         purchase.markRejected();
         await repos.purchase.save(purchase);
-
         throw new Error(validationResult.error || 'Purchase validation failed');
       });
     }
 
     try {
-      return await this.unitOfWork.run(async (repos) => {
+      const result = await this.unitOfWork.run(async (repos) => {
         const existing = await repos.purchase.findByToken(purchaseToken);
         if (existing) {
           if (existing.status === 'CREDITED') {
@@ -196,7 +197,6 @@ export class ValidatePurchaseUseCase {
           validationResult.providerResponse ?? null
         );
         await repos.purchase.save(purchase);
-
         return {
           success: true,
           isDuplicate: false,
@@ -207,6 +207,8 @@ export class ValidatePurchaseUseCase {
           riskScore: fraudAnalysis.riskScore
         };
       });
+      if (!result.isDuplicate) metrics.purchaseState('CREDITED');
+      return result;
     } catch (error) {
       if (error.code === 'P2002') {
         const existing = await this.purchaseRepository.findByToken(purchaseToken);

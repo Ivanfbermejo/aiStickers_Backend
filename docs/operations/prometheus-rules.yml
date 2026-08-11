@@ -1,0 +1,166 @@
+groups:
+  - name: aistickers_backend_alerts
+    interval: 15s
+    rules:
+      # -----------------------------------------------------------------------
+      # Recording rules: pre-aggregate common request/error rates so alert
+      # expressions stay readable and cheap to evaluate.
+      # -----------------------------------------------------------------------
+
+      # 5xx error rate over the last 5 minutes, per route and overall.
+      # Alert when overall 5xx rate exceeds 1% for 5 minutes.
+      - record: http_5xx_rate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m]))
+
+      # P95 request latency over the last 5 minutes.
+      # Alert when P95 latency exceeds 2000 ms for 5 minutes.
+      - record: http_latency_p95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_ms_bucket[5m])) by (le, route)
+          )
+
+      # -----------------------------------------------------------------------
+      # Dependency readiness probes.
+      # dependency_up{name="postgres"} and dependency_up{name="redis"} are
+      # set by readiness checks. Alert when any critical dependency is down
+      # for more than 1 minute.
+      # -----------------------------------------------------------------------
+      - alert: DependencyDown
+        expr: dependency_up == 0
+        for: 1m
+        labels:
+          severity: p1
+        annotations:
+          summary: "Critical dependency {{ $labels.name }} is down"
+          description: "dependency_up{name='{{ $labels.name }}'} has been 0 for more than 1 minute."
+
+      # -----------------------------------------------------------------------
+      # HTTP error-rate alert.
+      # Threshold: > 1% of requests return 5xx over a 5-minute window.
+      # -----------------------------------------------------------------------
+      - alert: High5xxRate
+        expr: http_5xx_rate > 0.01
+        for: 5m
+        labels:
+          severity: p1
+        annotations:
+          summary: "High 5xx error rate"
+          description: "5xx rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # -----------------------------------------------------------------------
+      # HTTP latency alert.
+      # Threshold: P95 latency > 2000 ms for 5 minutes.
+      # -----------------------------------------------------------------------
+      - alert: HighLatencyP95
+        expr: http_latency_p95 > 2000
+        for: 5m
+        labels:
+          severity: p2
+        annotations:
+          summary: "HTTP P95 latency is high"
+          description: "P95 latency is {{ $value }}ms for route {{ $labels.route }} over the last 5 minutes."
+
+      # -----------------------------------------------------------------------
+      # Dead-letter queue growth.
+      # queue_dlq_entries_total counts jobs moved to a DLQ by queue name.
+      # Alert when the generation DLQ has been growing over the last 10 minutes.
+      # -----------------------------------------------------------------------
+      - alert: QueueDLQGrowth
+        expr: increase(queue_dlq_entries_total{queue="generation"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: p2
+        annotations:
+          summary: "Generation DLQ is growing"
+          description: "{{ $value }} jobs moved to the generation DLQ in the last 10 minutes."
+
+      # -----------------------------------------------------------------------
+      # Stuck payments.
+      # payment_pending_age_seconds is the age of the oldest pending purchase.
+      # Threshold: a purchase has been pending for more than 30 minutes.
+      # -----------------------------------------------------------------------
+      - alert: PaymentPendingTooOld
+        expr: payment_pending_age_seconds > 1800
+        for: 5m
+        labels:
+          severity: p2
+        annotations:
+          summary: "Oldest pending purchase is older than 30 minutes"
+          description: "Oldest pending purchase age is {{ $value }} seconds."
+
+      # -----------------------------------------------------------------------
+      # Payment reconciliation discrepancies.
+      # payment_reconcile_discrepancies_total increments when the local state
+      # disagrees with the store provider. Alert on any increase over 10 minutes.
+      # -----------------------------------------------------------------------
+      - alert: PaymentReconcileDiscrepancy
+        expr: increase(payment_reconcile_discrepancies_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: p2
+        annotations:
+          summary: "Payment reconciliation discrepancy detected"
+          description: "{{ $value }} discrepancies detected in the last 10 minutes."
+
+      # -----------------------------------------------------------------------
+      # AI spend spike.
+      # ai_cost_usd_total is the estimated spend in USD by provider/type.
+      # Threshold: > $50 USD in the last hour (adjust to your budget).
+      # -----------------------------------------------------------------------
+      - alert: AICostSpike
+        expr: increase(ai_cost_usd_total[1h]) > 50
+        for: 5m
+        labels:
+          severity: p3
+        annotations:
+          summary: "AI cost spike"
+          description: "Estimated AI spend is ${{ $value }} in the last hour."
+
+      # -----------------------------------------------------------------------
+      # Job failure rate.
+      # job_outcomes_total counts queue job outcomes by queue/status/provider/type.
+      # Alert when the failure rate for generation jobs exceeds 5% over 10 minutes.
+      # -----------------------------------------------------------------------
+      - alert: JobFailureRateHigh
+        expr: |
+          sum(rate(job_outcomes_total{queue="generation",status="failed"}[10m]))
+          /
+          sum(rate(job_outcomes_total{queue="generation"}[10m])) > 0.05
+        for: 5m
+        labels:
+          severity: p2
+        annotations:
+          summary: "Generation job failure rate is high"
+          description: "Generation job failure rate is {{ $value | humanizePercentage }} over the last 10 minutes."
+
+      # -----------------------------------------------------------------------
+      # Authentication failures.
+      # auth_failures_total counts auth/HMAC failures by type.
+      # Threshold: > 10 failures per minute sustained for 5 minutes.
+      # -----------------------------------------------------------------------
+      - alert: AuthFailuresHigh
+        expr: rate(auth_failures_total[5m]) > 0.1667
+        for: 5m
+        labels:
+          severity: p2
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Auth failure rate is {{ $value }}/sec over the last 5 minutes."
+
+      # -----------------------------------------------------------------------
+      # Rate-limit hits.
+      # rate_limit_hits_total counts rate-limit rejections by scope.
+      # Threshold: > 1000 hits per minute on any scope.
+      # -----------------------------------------------------------------------
+      - alert: RateLimitHitsHigh
+        expr: rate(rate_limit_hits_total[5m]) > 3.33
+        for: 5m
+        labels:
+          severity: p2
+        annotations:
+          summary: "Rate limit hit rate is high"
+          description: "Rate limit hit rate for scope {{ $labels.scope }} is {{ $value }}/sec over the last 5 minutes."

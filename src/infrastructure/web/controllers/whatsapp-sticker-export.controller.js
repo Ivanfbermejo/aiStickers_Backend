@@ -12,6 +12,7 @@
  */
 
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 import * as WhatsAppService from '../../../application/services/whatsapp-sticker-export.service.js';
 
 export const WhatsAppStickerExportController = {
@@ -69,7 +70,7 @@ export const WhatsAppStickerExportController = {
         throw err;
       }
     } catch (err) {
-      console.error('[WhatsAppStickerExportController] exportSticker error:', err.message);
+      getLogger().error({ err }, '[WhatsAppStickerExportController] exportSticker error:');
       return res.status(500).json({ error: 'Failed to export sticker to WhatsApp', message: err.message });
     }
   },
@@ -118,7 +119,7 @@ export const WhatsAppStickerExportController = {
         }
       });
     } catch (err) {
-      console.error('[WhatsAppStickerExportController] getStickerExportStatus error:', err.message);
+      getLogger().error({ err }, '[WhatsAppStickerExportController] getStickerExportStatus error:');
       return res.status(500).json({ error: 'Failed to get sticker export status', message: err.message });
     }
   },
@@ -206,7 +207,7 @@ export const WhatsAppStickerExportController = {
         throw err;
       }
     } catch (err) {
-      console.error('[WhatsAppStickerExportController] exportPackage error:', err.message);
+      getLogger().error({ err }, '[WhatsAppStickerExportController] exportPackage error:');
       return res.status(500).json({ error: 'Failed to export package to WhatsApp', message: err.message });
     }
   },
@@ -269,7 +270,7 @@ export const WhatsAppStickerExportController = {
         }
       });
     } catch (err) {
-      console.error('[WhatsAppStickerExportController] getPackageExportStatus error:', err.message);
+      getLogger().error({ err }, '[WhatsAppStickerExportController] getPackageExportStatus error:');
       return res.status(500).json({ error: 'Failed to get package export status', message: err.message });
     }
   }

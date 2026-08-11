@@ -1,6 +1,7 @@
 import { container } from '../../../config/container.js';
 import { Sticker } from '../../../domain/entities/sticker.entity.js';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
 import {
   isInternalUrl,
   validateClientImageReference
@@ -68,7 +69,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Get user stickers error:', error);
+      getLogger().error({ err: error }, 'Get user stickers error:');
       return res.status(500).json({
         error: 'Failed to get stickers',
         message: error.message
@@ -116,7 +117,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Get stickers by package error:', error);
+      getLogger().error({ err: error }, 'Get stickers by package error:');
       return res.status(500).json({
         error: 'Failed to get stickers',
         message: error.message
@@ -155,7 +156,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Get sticker by id error:', error);
+      getLogger().error({ err: error }, 'Get sticker by id error:');
       return res.status(500).json({
         error: 'Failed to get sticker',
         message: error.message
@@ -264,7 +265,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Create sticker error:', error);
+      getLogger().error({ err: error }, 'Create sticker error:');
       return res.status(500).json({
         error: 'Failed to create sticker',
         message: error.message
@@ -342,7 +343,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Update sticker error:', error);
+      getLogger().error({ err: error }, 'Update sticker error:');
       return res.status(500).json({
         error: 'Failed to update sticker',
         message: error.message
@@ -394,7 +395,7 @@ export class StickerController {
       }
       await Promise.all(cleanupTasks.map(async task => {
         await container.services.assetCleanup.confirm(task);
-        return container.services.assetCleanup.run(task).catch(error => console.error(`[AssetCleanup] deferred cleanup for ${task.key}:`, error.message));
+        return container.services.assetCleanup.run(task).catch(error => getLogger().error({ err: error }, `[AssetCleanup] deferred cleanup for ${task.key}:`));
       }));
 
       return res.json({
@@ -403,7 +404,7 @@ export class StickerController {
       });
 
     } catch (error) {
-      console.error('Delete sticker error:', error);
+      getLogger().error({ err: error }, 'Delete sticker error:');
       return res.status(500).json({
         error: 'Failed to delete sticker',
         message: error.message

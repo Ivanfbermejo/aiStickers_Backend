@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Purchase } from '../../../domain/entities/purchase.entity.js';
 import { IPurchaseRepository } from '../../../domain/repositories/purchase.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Purchase Repository Implementation
@@ -28,7 +29,7 @@ export class JsonPurchaseRepository extends IPurchaseRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load purchases:', err);
+      getLogger().error({ err }, 'Failed to load purchases:');
       this.cache = new Map();
     }
   }

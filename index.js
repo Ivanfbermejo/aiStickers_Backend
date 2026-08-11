@@ -6,15 +6,30 @@
  */
 
 import { startServer, stopServer } from './src/server.js';
+import { rootLogger, getLogger } from './src/infrastructure/observability/logger.js';
+import { initErrorTracker } from './src/infrastructure/observability/error-tracker.js';
+import { env } from './src/config/env.js';
 
 async function main() {
+  await initErrorTracker();
   const started = await startServer();
+  let shuttingDown = false;
 
   const gracefulShutdown = async (signal) => {
-    console.log(`Received ${signal}, shutting down gracefully...`);
-    await stopServer(started);
-    console.log('Shutdown complete');
-    process.exit(0);
+    if (shuttingDown) {
+      rootLogger.info({ signal }, 'shutdown already in progress');
+      return;
+    }
+    shuttingDown = true;
+    rootLogger.info({ signal }, 'received shutdown signal, draining gracefully');
+    const clean = await stopServer(started);
+    if (clean) {
+      rootLogger.info('shutdown complete');
+      process.exit(0);
+    } else {
+      rootLogger.error('shutdown forced');
+      process.exit(1);
+    }
   };
 
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -22,6 +37,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Failed to start server:', err);
+  rootLogger.error({ err }, 'failed to start server');
   process.exit(1);
 });

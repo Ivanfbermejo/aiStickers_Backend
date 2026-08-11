@@ -1,4 +1,6 @@
 import { JwtService } from '../../auth/jwt.service.js';
+import { getLogger } from '../../observability/logger.js';
+import { metrics } from '../../observability/metrics.js';
 
 /**
  * JWT Authentication Middleware
@@ -17,6 +19,7 @@ export class AuthMiddleware {
       const authHeader = req.headers.authorization || '';
       
       if (!authHeader.startsWith('Bearer ')) {
+        metrics.authFailure('jwt');
         return res.status(401).json({ 
           error: 'Missing bearer token',
           message: 'Request must include JWT token' 
@@ -45,6 +48,8 @@ export class AuthMiddleware {
       
       return next();
     } catch (error) {
+      getLogger().debug({ err: error }, 'token verification failed');
+      metrics.authFailure('jwt');
       return res.status(401).json({ 
         error: 'Invalid token',
         message: error.message 
@@ -57,13 +62,11 @@ export class AuthMiddleware {
    * Required for user-specific operations. Expired tokens are never accepted.
    */
   verifyUserToken(req, res, next) {
-    console.log('🔐 verifyUserToken called for:', req.path);
     try {
       const authHeader = req.headers.authorization || '';
-      console.log('🔐 authHeader:', authHeader ? 'present' : 'missing');
 
       if (!authHeader.startsWith('Bearer ')) {
-        console.log('❌ No Bearer token found');
+        metrics.authFailure('jwt');
         return res.status(401).json({
           error: 'Missing bearer token',
           message: 'User authentication required'
@@ -76,7 +79,7 @@ export class AuthMiddleware {
 
       // Reject App Tokens
       if (decoded.type === 'app' || decoded.sub === 'app') {
-        console.log('❌ App token rejected');
+        metrics.authFailure('jwt');
         return res.status(401).json({
           error: 'User authentication required',
           message: 'App tokens cannot access user resources'
@@ -85,7 +88,7 @@ export class AuthMiddleware {
 
       // Validate user identifier
       if (!decoded.sub || decoded.sub === '' || decoded.sub === 'null') {
-        console.log('❌ Invalid user identifier');
+        metrics.authFailure('jwt');
         return res.status(401).json({
           error: 'Invalid user token',
           message: 'User identifier missing'
@@ -97,6 +100,8 @@ export class AuthMiddleware {
 
       return next();
     } catch (error) {
+      getLogger().debug({ err: error }, 'user token verification failed');
+      metrics.authFailure('jwt');
       return res.status(401).json({
         error: 'Invalid token',
         message: error.message

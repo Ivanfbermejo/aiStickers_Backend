@@ -1,5 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
 import { env } from '../../config/env.js';
+import { getLogger } from '../observability/logger.js';
 
 /**
  * Google Authentication Service
@@ -36,7 +37,7 @@ export class GoogleAuthService {
         emailVerified: payload.email_verified
       };
     } catch (error) {
-      console.error('Google token verification failed:', error);
+      getLogger().error({ err: error }, 'Google token verification failed:');
       throw new Error('Invalid Google token');
     }
   }

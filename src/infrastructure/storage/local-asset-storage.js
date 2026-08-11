@@ -132,4 +132,13 @@ export class LocalAssetStorage extends AssetStorage {
     // returns the base path.
     return `/api/v1/assets/${key}`;
   }
+
+  async checkReady() {
+    const probeKey = `.ready-probe/${Date.now()}`;
+    const probe = Buffer.from('ready');
+    await this.putObject(probeKey, probe, { mimeType: 'text/plain', sizeBytes: probe.length });
+    await this.getObject(probeKey);
+    await this.deleteObject(probeKey);
+    return true;
+  }
 }

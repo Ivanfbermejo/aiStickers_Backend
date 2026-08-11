@@ -1,4 +1,6 @@
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
+import { metrics } from '../../observability/metrics.js';
 
 function redisService(req) {
   return req.app.locals.redisSecurity;
@@ -12,9 +14,10 @@ function userIdentity(req) {
   return req.user?.sub || null;
 }
 
-function tooManyRequests(res, retryAfterSeconds) {
+function tooManyRequests(res, retryAfterSeconds, scope) {
   const retryAfter = Math.max(1, Math.ceil(retryAfterSeconds || 1));
   res.set('Retry-After', String(retryAfter));
+  metrics.rateLimitHit(scope);
   return res.status(429).json({
     error: 'Too many requests',
     message: 'Rate limit exceeded'
@@ -48,13 +51,13 @@ export function rateLimit({
       });
 
       if (result.count > limit) {
-        return tooManyRequests(res, result.retryAfterSeconds);
+        return tooManyRequests(res, result.retryAfterSeconds, scope);
       }
 
       req.rateLimit = { scope, ...result };
       return next();
     } catch (error) {
-      console.error(`[RateLimit:${scope}] Redis unavailable:`, error.message);
+      getLogger().warn({ err: error, scope }, 'rate limit Redis unavailable');
       if (failClosed) return unavailable(res);
       return next();
     }
@@ -82,12 +85,12 @@ export function limitActiveGenerations({ limit = env.RATE_LIMIT_GENERATION_ACTIV
         : ['queued', 'processing'].includes(job.status)).length;
 
       if (active >= limit) {
-        return tooManyRequests(res, retryAfterSeconds);
+        return tooManyRequests(res, retryAfterSeconds, 'generation-active');
       }
 
       return next();
     } catch (error) {
-      console.error('[RateLimit:generation-active] Repository unavailable:', error.message);
+      getLogger().warn({ err: error }, 'active generation limit repository unavailable');
       return unavailable(res);
     }
   };

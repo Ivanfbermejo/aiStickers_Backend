@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { User } from '../../../domain/entities/user.entity.js';
 import { IUserRepository } from '../../../domain/repositories/user.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON User Repository Implementation
@@ -29,7 +30,7 @@ export class JsonUserRepository extends IUserRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load users:', err);
+      getLogger().error({ err }, 'Failed to load users:');
       this.cache = new Map();
     }
   }

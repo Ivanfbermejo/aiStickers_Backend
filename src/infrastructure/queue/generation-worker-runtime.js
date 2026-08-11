@@ -6,6 +6,8 @@ import {
   createRedisConnection,
   loadBullMQClasses
 } from './bullmq-runtime.js';
+import { getLogger, withCorrelationId, bindCorrelationId } from '../observability/logger.js';
+import { metrics } from '../observability/metrics.js';
 
 export async function withAbortTimeout(operation, timeoutMs, message) {
   const controller = new AbortController();
@@ -118,56 +120,84 @@ export class GenerationQueueWorkerRuntime {
 
     this.attachEvents(generationEvents, 'generation');
     this.attachEvents(cleanupEvents, 'cleanup');
+    generationWorker.on('completed', (job) => {
+      const provider = job?.data?.provider || 'unknown';
+      const type = job?.data?.type || job?.name || 'unknown';
+      metrics.jobOutcome('generation', 'completed', provider, type);
+    });
     generationWorker.on('failed', (job, error) => {
+      const provider = job?.data?.provider || 'unknown';
+      const type = job?.data?.type || job?.name || 'unknown';
+      metrics.jobOutcome('generation', 'failed', provider, type);
       const pending = this.onFailed(job, error).catch(failure => {
-        console.error('[GenerationQueue] failed-event handler error:', failure.message);
+        getLogger().error({ err: failure }, '[GenerationQueue] failed-event handler error:');
       });
       this.pendingEventHandlers.add(pending);
       pending.finally(() => this.pendingEventHandlers.delete(pending)).catch(() => {});
     });
-    generationWorker.on('error', error => console.error('[GenerationQueue] worker error:', error.message));
-    cleanupWorker.on('error', error => console.error('[CleanupQueue] worker error:', error.message));
+    cleanupWorker.on('completed', (job) => {
+      const type = job?.data?.type || job?.name || 'unknown';
+      metrics.jobOutcome('cleanup', 'completed', 'cleanup', type);
+    });
+    cleanupWorker.on('failed', (job, error) => {
+      const type = job?.data?.type || job?.name || 'unknown';
+      metrics.jobOutcome('cleanup', 'failed', 'cleanup', type);
+      getLogger().warn({ jobId: job?.id, failedReason: error?.message }, 'cleanup job failed');
+    });
+    generationWorker.on('error', error => getLogger().error({ err: error }, '[GenerationQueue] worker error:'));
+    cleanupWorker.on('error', error => getLogger().error({ err: error }, '[CleanupQueue] worker error:'));
 
     this.dlqQueue = await this.queueProducer.queue(GENERATION_DLQ_NAME);
     await this.queueProducer.scheduleMaintenance();
     await this.reconcileOnce();
     this.started = true;
     await this.refreshMetrics();
-    console.log(`[GenerationQueue] worker started (concurrency=${this.config.GENERATION_QUEUE_CONCURRENCY})`);
+    getLogger().info(`[GenerationQueue] worker started (concurrency=${this.config.GENERATION_QUEUE_CONCURRENCY})`);
   }
 
   attachEvents(queueEvents, label) {
     queueEvents.on('waiting', () => this.refreshMetrics().catch(() => {}));
     queueEvents.on('active', () => this.refreshMetrics().catch(() => {}));
     queueEvents.on('completed', () => this.refreshMetrics().catch(() => {}));
-    queueEvents.on('failed', () => this.refreshMetrics().catch(() => {}));
+    queueEvents.on('failed', ({ jobId, failedReason }) => {
+      getLogger().warn({ jobId, failedReason }, `${label} job failed`);
+      this.refreshMetrics().catch(() => {});
+    });
     queueEvents.on('stalled', ({ jobId }) => {
       this.stalledEvents += 1;
       this.metrics.stalled = this.stalledEvents;
-      console.warn(`[${label}Queue] stalled job ${jobId}`);
+      const provider = label === 'cleanup' ? 'cleanup' : 'unknown';
+      metrics.jobOutcome(label, 'stalled', provider, 'unknown');
+      getLogger().warn({ jobId }, `${label} job stalled`);
     });
   }
 
   async processGenerationQueueJob(job, { signal } = {}) {
-    let result;
-    if (job.name === 'reconcile-generations') {
-      await this.reconcileGenerationJobs();
-      result = { reconciled: true };
-    } else {
-      result = await this.generationWorker.processQueueJob(job, { signal });
-    }
-    await this.enqueueDeadLetterResult(result);
-    return result;
+    const correlationId = job.data?.correlationId || `worker-gen-${job.id || Date.now()}`;
+    return withCorrelationId(correlationId, async () => {
+      let result;
+      if (job.name === 'reconcile-generations') {
+        await this.reconcileGenerationJobs();
+        result = { reconciled: true };
+      } else {
+        result = await this.generationWorker.processQueueJob(job, { signal });
+      }
+      await this.enqueueDeadLetterResult(result);
+      return result;
+    });
   }
 
   async processCleanupQueueJob(job, { signal } = {}) {
-    if (job.name === 'reconcile-cleanup') {
-      await this.reconcileCleanupJobs();
-      return { reconciled: true };
-    }
-    const taskId = job.data?.taskId;
-    if (!taskId) throw new Error('Cleanup queue payload has no taskId');
-    return this.assetCleanupService.process({ id: taskId, signal });
+    const correlationId = job.data?.correlationId || `worker-cleanup-${job.id || Date.now()}`;
+    return withCorrelationId(correlationId, async () => {
+      if (job.name === 'reconcile-cleanup') {
+        await this.reconcileCleanupJobs();
+        return { reconciled: true };
+      }
+      const taskId = job.data?.taskId;
+      if (!taskId) throw new Error('Cleanup queue payload has no taskId');
+      return this.assetCleanupService.process({ id: taskId, signal });
+    });
   }
 
   async reconcileOnce() {
@@ -178,9 +208,9 @@ export class GenerationQueueWorkerRuntime {
     const jobs = await this.generationJobRepository.findRecoverable?.(100) || [];
     for (const job of jobs) {
       try {
-        await this.queueProducer.enqueueGeneration(job.id);
+        await this.queueProducer.enqueueGeneration({ jobId: job.id, type: job.type, provider: job.provider });
       } catch (error) {
-        console.error(`[GenerationQueue] reconciliation failed for ${job.id}:`, error.message);
+        getLogger().error({ err: error }, `[GenerationQueue] reconciliation failed for ${job.id}:`);
       }
     }
   }
@@ -192,7 +222,7 @@ export class GenerationQueueWorkerRuntime {
         await this.queueProducer.enqueueCleanup(task);
         await this.assetCleanupService.markQueued(task);
       } catch (error) {
-        console.error(`[CleanupQueue] reconciliation failed for ${task.id}:`, error.message);
+        getLogger().error({ err: error }, `[CleanupQueue] reconciliation failed for ${task.id}:`);
       }
     }
   }
@@ -203,7 +233,10 @@ export class GenerationQueueWorkerRuntime {
     if (!jobId) return;
     const result = await this.generationWorker.moveToDlq(jobId, error?.message || 'retry budget exhausted');
     await this.enqueueDeadLetterResult(result, error?.message || 'retry budget exhausted');
-    console.error(`[GenerationQueue] job ${jobId} moved to DLQ after retries`);
+    if (result?.deadLettered) {
+      metrics.dlqEntry('generation');
+    }
+    getLogger().error(`[GenerationQueue] job ${jobId} moved to DLQ after retries`);
   }
 
   async enqueueDeadLetterResult(result, fallbackReason = 'provider submission outcome is ambiguous') {
@@ -238,12 +271,12 @@ export class GenerationQueueWorkerRuntime {
     let timedOut = false;
     const forceTimer = setTimeout(() => {
       timedOut = true;
-      console.error('[GenerationQueue] forcing worker shutdown after drain timeout');
+      getLogger().error('[GenerationQueue] forcing worker shutdown after drain timeout');
       for (const worker of this.workers) worker.close(true).catch(() => {});
     }, timeoutMs);
     await Promise.all(this.workers.map(worker => worker.close(false).catch(() => {})));
     clearTimeout(forceTimer);
-    if (timedOut) console.error('[GenerationQueue] graceful shutdown exceeded timeout');
+    if (timedOut) getLogger().error('[GenerationQueue] graceful shutdown exceeded timeout');
     await Promise.all([...this.pendingEventHandlers]);
     await Promise.all(this.events.map(event => event.close().catch(() => {})));
     await Promise.all(this.connections.map(connection => connection.quit().catch(() => connection.disconnect())));

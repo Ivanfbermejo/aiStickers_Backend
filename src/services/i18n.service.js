@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { env } from "../config/env.js";
+import { getLogger } from "../infrastructure/observability/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TRANSLATIONS_DIR = path.resolve(
@@ -20,7 +21,7 @@ function loadFromDisk(lang) {
     const raw = fs.readFileSync(filePath, "utf8");
     return JSON.parse(raw);
   } catch (err) {
-    console.error(`[i18n] Failed to parse ${filePath}:`, err.message);
+    getLogger().error({ err }, `[i18n] Failed to parse ${filePath}:`);
     return null;
   }
 }
@@ -41,7 +42,6 @@ export const I18nService = {
         throw new Error(`translations_not_found:${lang}`);
       }
       memCache.set(lang, { version: file.version, data: file.data });
-      console.log(`[i18n] Loaded '${lang}' from disk (${Object.keys(file.data).length} strings, v${file.version})`);
     }
 
     const entry = memCache.get(lang);
@@ -57,10 +57,8 @@ export const I18nService = {
   clearCache(lang = null) {
     if (lang) {
       memCache.delete(lang);
-      console.log(`[i18n] Cache cleared for '${lang}'`);
     } else {
       memCache.clear();
-      console.log("[i18n] Full cache cleared");
     }
   }
 };

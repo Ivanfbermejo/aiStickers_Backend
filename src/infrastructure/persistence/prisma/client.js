@@ -33,6 +33,28 @@ export async function pingDatabase() {
 }
 
 /**
+ * Return live PostgreSQL backend counts for this database user. PostgreSQL
+ * exposes the state of every connection, including Prisma's pool, through
+ * pg_stat_activity; no configured or guessed pool size is used.
+ */
+export async function getDatabaseConnectionMetrics() {
+  const prisma = getPrismaClient();
+  const rows = await prisma.$queryRaw`
+    SELECT
+      COUNT(*) FILTER (WHERE state = 'active') AS in_use,
+      COUNT(*) FILTER (WHERE state = 'idle') AS idle
+    FROM pg_catalog.pg_stat_activity
+    WHERE datname = current_database()
+      AND usename = current_user
+  `;
+  const row = rows[0] || {};
+  return {
+    inUse: Number(row.in_use || 0),
+    idle: Number(row.idle || 0)
+  };
+}
+
+/**
  * Disconnect the singleton client, if it was ever created. Safe to call
  * multiple times and safe to call even if no client was created.
  */

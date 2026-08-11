@@ -1,5 +1,6 @@
 import { container } from '../../../config/container.js';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
 import {
   isInternalUrl,
   validateClientImageReference
@@ -99,7 +100,7 @@ export class GenerationController {
 
       return res.status(201).json(result);
     } catch (error) {
-      console.error('Generation create error:', error);
+      getLogger().error({ err: error }, 'Generation create error:');
 
       if (error.message === 'Insufficient balance') {
         return res.status(400).json({
@@ -189,7 +190,7 @@ export class GenerationController {
 
       return res.json(response);
     } catch (error) {
-      console.error('Generation getById error:', error);
+      getLogger().error({ err: error }, 'Generation getById error:');
       return res.status(500).json({
         error: 'Failed to get generation job',
         message: error.message
@@ -230,7 +231,7 @@ export class GenerationController {
         })))
       });
     } catch (error) {
-      console.error('Generation getUserJobs error:', error);
+      getLogger().error({ err: error }, 'Generation getUserJobs error:');
       return res.status(500).json({
         error: 'Failed to list generation jobs',
         message: error.message

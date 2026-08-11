@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Package } from '../../../domain/entities/package.entity.js';
 import { IPackageRepository } from '../../../domain/repositories/package.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Package Repository Implementation
@@ -29,7 +30,7 @@ export class JsonPackageRepository extends IPackageRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load packages:', err);
+      getLogger().error({ err }, 'Failed to load packages:');
       this.cache = new Map();
     }
   }

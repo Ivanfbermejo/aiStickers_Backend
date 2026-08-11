@@ -4,7 +4,8 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
-  ListObjectsV2Command
+  ListObjectsV2Command,
+  HeadBucketCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { AssetStorage } from '../../application/storage/asset-storage.js';
@@ -180,5 +181,11 @@ export class S3AssetStorage extends AssetStorage {
       Key: this._prefixed(key)
     });
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+  }
+
+  async checkReady() {
+    const command = new HeadBucketCommand({ Bucket: this.bucket });
+    await this.client.send(command);
+    return true;
   }
 }

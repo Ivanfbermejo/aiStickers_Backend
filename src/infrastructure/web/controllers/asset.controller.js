@@ -1,4 +1,5 @@
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Asset Controller
@@ -24,7 +25,7 @@ export class AssetController {
         res
       });
     } catch (error) {
-      console.error('[AssetController] getAsset error:', error.message);
+      getLogger().error({ err: error }, '[AssetController] getAsset error:');
       const status = error.message?.includes('does not belong') || error.message?.includes('Invalid or expired')
         ? 403
         : 404;

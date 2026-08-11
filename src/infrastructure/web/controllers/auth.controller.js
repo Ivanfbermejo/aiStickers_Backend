@@ -1,4 +1,5 @@
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Auth Controller
@@ -18,7 +19,7 @@ export class AuthController {
         expiresIn: '24h'
       });
     } catch (error) {
-      console.error('App token generation failed:', error);
+      getLogger().error({ err: error }, 'App token generation failed:');
       res.status(500).json({ error: 'Token generation failed' });
     }
   }
@@ -55,7 +56,7 @@ export class AuthController {
         user: result.user
       });
     } catch (error) {
-      console.error('Google authentication failed:', error);
+      getLogger().error({ err: error }, 'Google authentication failed:');
       res.status(401).json({ 
         error: 'Authentication failed',
         message: error.message 
@@ -105,7 +106,7 @@ export class AuthController {
         expiresIn: session.expiresIn
       });
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      getLogger().error({ err: error }, 'Token refresh failed:');
       res.status(401).json({
         error: 'Token refresh failed',
         message: 'Invalid, expired or revoked refresh token'
@@ -125,7 +126,7 @@ export class AuthController {
       }
       res.json({ success: true, message: 'Logged out' });
     } catch (error) {
-      console.error('Logout failed:', error);
+      getLogger().error({ err: error }, 'Logout failed:');
       res.status(500).json({ error: 'Logout failed' });
     }
   }

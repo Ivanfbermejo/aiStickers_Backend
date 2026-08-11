@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Sticker } from '../../../domain/entities/sticker.entity.js';
 import { IStickerRepository } from '../../../domain/repositories/sticker.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Sticker Repository Implementation
@@ -29,7 +30,7 @@ export class JsonStickerRepository extends IStickerRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load stickers:', err);
+      getLogger().error({ err }, 'Failed to load stickers:');
       this.cache = new Map();
     }
   }

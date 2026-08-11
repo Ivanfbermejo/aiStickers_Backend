@@ -171,9 +171,10 @@ export class CreateGenerationJobUseCase {
     let queue = { enqueued: false, pendingReconciliation: true };
     if (this.generationQueue) {
       try {
-        queue = await this.generationQueue.enqueueGeneration(job.id);
+        queue = await this.generationQueue.enqueueGeneration({ jobId: job.id, type: job.type, provider: job.provider });
       } catch (enqueueError) {
-        console.error(`[GenerationQueue] enqueue failed for ${job.id}; reconciler will retry:`, enqueueError.message);
+        const { getLogger } = await import('../../../infrastructure/observability/logger.js');
+        getLogger().error({ err: enqueueError }, `[GenerationQueue] enqueue failed for ${job.id}; reconciler will retry:`);
       }
     }
 

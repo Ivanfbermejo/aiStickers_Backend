@@ -27,6 +27,7 @@ import { GetGenerationJobUseCase } from '../application/use-cases/generation/get
 import { GetGenerationJobsUseCase } from '../application/use-cases/generation/get-generation-jobs.use-case.js';
 
 import { env } from './env.js';
+import { rootLogger } from '../infrastructure/observability/logger.js';
 
 /**
  * Dependency Injection Container
@@ -156,7 +157,7 @@ export class Container {
     });
 
     this.initialized = true;
-    console.log('✅ Dependency container initialized');
+    rootLogger.info('dependency container initialized');
   }
   
   // Getters for clean access

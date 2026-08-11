@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { createRequire } from 'node:module';
+import { getCorrelationId, getLogger } from '../observability/logger.js';
 
 export const GENERATION_QUEUE_NAME = env.GENERATION_QUEUE_NAME || 'generation';
 export const CLEANUP_QUEUE_NAME = env.CLEANUP_QUEUE_NAME || 'asset-cleanup';
@@ -102,12 +103,15 @@ export class GenerationQueueProducer {
     return this.queues.get(name);
   }
 
-  async enqueueGeneration(jobId) {
+  async enqueueGeneration(job) {
+    const jobId = typeof job === 'object' && job ? job.jobId || job.id : job;
+    const type = typeof job === 'object' && job ? job.type : undefined;
+    const provider = typeof job === 'object' && job ? job.provider : undefined;
     if (!jobId) throw new Error('Generation queue requires a PostgreSQL jobId');
     const queue = await this.queue(GENERATION_QUEUE_NAME);
     if (!queue) return { enqueued: false, disabled: true, jobId };
 
-    const queued = await queue.add('generation', { jobId }, {
+    const queued = await queue.add('generation', { jobId, type, provider, correlationId: getCorrelationId() }, {
       // This is deliberately the database primary key. It is the only
       // idempotency key allowed for a generation queue entry.
       jobId,
@@ -123,7 +127,7 @@ export class GenerationQueueProducer {
     if (!task?.id) throw new Error('Cleanup queue requires a journal task id');
     const queue = await this.queue(CLEANUP_QUEUE_NAME);
     if (!queue) return { enqueued: false, disabled: true, taskId: task.id };
-    const queued = await queue.add('asset-cleanup', { taskId: task.id }, {
+    const queued = await queue.add('asset-cleanup', { taskId: task.id, type: task.entity, correlationId: getCorrelationId() }, {
       jobId: cleanupBullMQJobId(task.id),
       attempts: this.config.GENERATION_QUEUE_ATTEMPTS,
       backoff: { type: 'exponential', delay: this.config.GENERATION_QUEUE_BACKOFF_MS },
@@ -146,7 +150,7 @@ export class GenerationQueueProducer {
       if (['waiting', 'delayed', 'paused', 'waiting-children'].includes(state)) return existing;
       throw new Error(`Cannot replay generation job ${jobId} while it is ${state}`);
     }
-    return queue.add('generation', { jobId }, {
+    return queue.add('generation', { jobId, correlationId: getCorrelationId() }, {
       jobId,
       attempts: this.config.GENERATION_QUEUE_ATTEMPTS,
       backoff: { type: 'exponential', delay: this.config.GENERATION_QUEUE_BACKOFF_MS },

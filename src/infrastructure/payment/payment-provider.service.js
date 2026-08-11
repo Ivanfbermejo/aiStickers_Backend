@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js';
+import { getLogger } from '../observability/logger.js';
 import { GooglePlayPaymentService } from './google-play.service.js';
 
 /**
@@ -31,7 +32,7 @@ export class PaymentProviderService {
 
       case 'APPLE_APP_STORE':
         // Apple is intentionally disabled until App Store Server API is implemented.
-        console.warn('Apple App Store validation rejected: feature flag is off');
+        getLogger().warn('Apple App Store validation rejected: feature flag is off');
         return {
           valid: false,
           pending: false,

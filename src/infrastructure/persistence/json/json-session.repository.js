@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Session } from '../../../domain/entities/session.entity.js';
 import { ISessionRepository } from '../../../domain/repositories/session.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Session Repository Implementation
@@ -29,7 +30,7 @@ export class JsonSessionRepository extends ISessionRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load sessions:', err);
+      getLogger().error({ err }, 'Failed to load sessions:');
       this.cache = new Map();
     }
   }

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { TelegramPackLink } from '../../../domain/entities/telegram-pack-link.entity.js';
 import { ITelegramPackLinkRepository } from '../../../domain/repositories/telegram-pack-link.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 export class JsonTelegramPackLinkRepository extends ITelegramPackLinkRepository {
   constructor(dataDir = '/var/www/aiStickers_Backend/data') {
@@ -23,7 +24,7 @@ export class JsonTelegramPackLinkRepository extends ITelegramPackLinkRepository 
     try {
       this.cache = new Map(Object.entries(JSON.parse(fs.readFileSync(this.dbFile, 'utf8'))));
     } catch (error) {
-      console.error('Failed to load Telegram pack links:', error);
+      getLogger().error({ err: error }, 'Failed to load Telegram pack links:');
       this.cache = new Map();
     }
   }

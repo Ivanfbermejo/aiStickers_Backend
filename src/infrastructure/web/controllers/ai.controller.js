@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 import { isInternalUrl, validateClientImageReference } from '../../../application/services/secure-asset.service.js';
 import { resolveClientAsset } from './client-asset.js';
 
@@ -99,7 +100,7 @@ export class AiController {
       return res.json(result);
 
     } catch (error) {
-      console.error('AI processImage error:', error);
+      getLogger().error({ err: error }, 'AI processImage error');
 
       if (error.message === 'Insufficient balance') {
         return res.status(400).json({
@@ -164,13 +165,16 @@ export class AiController {
           message: 'Prediction does not exist or does not belong to user'
         });
       }
-      
       const response = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
         headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` }
       });
-      
+
+      if (!response.ok) {
+        throw new Error(`Replicate API returned ${response.status}`);
+      }
+
       const prediction = await response.json();
-      
+
       return res.json({
         success: true,
         status: prediction.status,
@@ -181,7 +185,7 @@ export class AiController {
       });
 
     } catch (error) {
-      console.error('AI getStatus error:', error);
+      getLogger().error({ err: error }, 'AI getStatus error');
       return res.status(500).json({
         error: 'Failed to get status',
         message: error.message

@@ -1,6 +1,7 @@
 import { container } from '../../../config/container.js';
 import { Package } from '../../../domain/entities/package.entity.js';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
 
 async function trayIconUrl(pkg, requesterId) {
   if (pkg.trayIconObjectKey && pkg.userId === requesterId) {
@@ -78,7 +79,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Get user packages error:', error);
+      getLogger().error({ err: error }, 'Get user packages error:');
       return res.status(500).json({
         error: 'Failed to get packages',
         message: error.message
@@ -123,7 +124,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Get public packages error:', error);
+      getLogger().error({ err: error }, 'Get public packages error:');
       return res.status(500).json({
         error: 'Failed to get public packages',
         message: error.message
@@ -189,7 +190,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Get package by id error:', error);
+      getLogger().error({ err: error }, 'Get package by id error:');
       return res.status(500).json({
         error: 'Failed to get package',
         message: error.message
@@ -252,7 +253,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Create package error:', error);
+      getLogger().error({ err: error }, 'Create package error:');
       return res.status(500).json({
         error: 'Failed to create package',
         message: error.message
@@ -338,7 +339,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Update package error:', error);
+      getLogger().error({ err: error }, 'Update package error:');
       return res.status(500).json({
         error: 'Failed to update package',
         message: error.message
@@ -389,7 +390,7 @@ export class PackageController {
       }
       if (cleanupTask) {
         await container.services.assetCleanup.confirm(cleanupTask);
-        await container.services.assetCleanup.run(cleanupTask).catch(error => console.error(`[AssetCleanup] deferred cleanup for ${cleanupTask.key}:`, error.message));
+        await container.services.assetCleanup.run(cleanupTask).catch(error => getLogger().error({ err: error }, `[AssetCleanup] deferred cleanup for ${cleanupTask.key}:`));
       }
       await container.repositories.telegramPackLink?.deleteByPackageId(id, userId);
 
@@ -400,7 +401,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Delete package error:', error);
+      getLogger().error({ err: error }, 'Delete package error:');
       return res.status(500).json({
         error: 'Failed to delete package',
         message: error.message

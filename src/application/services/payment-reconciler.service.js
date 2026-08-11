@@ -1,5 +1,7 @@
 import { Transaction } from '../../domain/entities/transaction.entity.js';
 import { Purchase } from '../../domain/entities/purchase.entity.js';
+import { getLogger } from '../../infrastructure/observability/logger.js';
+import { metrics } from '../../infrastructure/observability/metrics.js';
 
 const DEFAULT_MAX_ATTEMPTS = 10;
 const DEFAULT_BACKOFF_MS = 60_000; // 1 minute base
@@ -58,6 +60,7 @@ export class PaymentReconcilerService {
    * @returns {Object} Summary of processed purchases
    */
   async reconcile({ dryRun = false } = {}) {
+    await this.updatePendingPurchaseAge();
     const pending = await this.purchaseRepository.findPendingForReconcile(this.batchSize);
     const eligible = pending.filter((p) => this.isEligibleForRetry(p));
 
@@ -78,11 +81,18 @@ export class PaymentReconcilerService {
         else summary.stillPending += 1;
       } catch (err) {
         summary.errors += 1;
-        console.error(`Reconcile failed for purchase ${purchase.id}:`, err.message);
+        getLogger().error({ err }, `Reconcile failed for purchase ${purchase.id}:`);
       }
     }
 
     return summary;
+  }
+
+  isDiscrepancy(freshStatus, validation) {
+    if (!freshStatus) return false;
+    if (freshStatus === 'CREDITED' && (validation.pending || !validation.valid)) return true;
+    if (freshStatus === 'REJECTED' && (validation.valid || validation.pending)) return true;
+    return false;
   }
 
   async reconcileOne(purchase, dryRun = false) {
@@ -104,9 +114,15 @@ export class PaymentReconcilerService {
         throw new Error(`Unknown productId on purchase ${purchase.id}`);
       }
 
+      let credited = false;
+      let discrepancy = false;
       await this.unitOfWork.run(async (repos) => {
         const fresh = await repos.purchase.findById(purchase.id);
-        if (!fresh || fresh.status === 'CREDITED') {
+        if (!fresh) return;
+        if (this.isDiscrepancy(fresh.status, validation)) {
+          discrepancy = true;
+        }
+        if (fresh.status === 'CREDITED') {
           return;
         }
 
@@ -139,15 +155,38 @@ export class PaymentReconcilerService {
           providerResponse: validation.providerResponse ?? null
         });
         await repos.purchase.save(updated);
+        credited = true;
       });
 
-      return { credited: true };
+      if (discrepancy) metrics.reconcileDiscrepancy();
+      if (credited) metrics.purchaseState('CREDITED');
+
+      return { credited };
     }
 
     if (validation.pending) {
+      let stillPending = false;
+      let transitioned = false;
+      let discrepancy = false;
       await this.unitOfWork.run(async (repos) => {
         const fresh = await repos.purchase.findById(purchase.id);
         if (!fresh) return;
+        if (this.isDiscrepancy(fresh.status, validation)) {
+          discrepancy = true;
+        }
+        if (fresh.status === 'CREDITED' || fresh.status === 'REJECTED') {
+          return;
+        }
+        if (fresh.status === 'PENDING') {
+          const updated = new Purchase({
+            ...fresh,
+            reconciledAt: new Date().toISOString(),
+            reconcileAttempts: (fresh.reconcileAttempts || 0) + 1
+          });
+          await repos.purchase.save(updated);
+          stillPending = true;
+          return;
+        }
         const updated = new Purchase({
           ...fresh,
           status: 'PENDING',
@@ -155,13 +194,36 @@ export class PaymentReconcilerService {
           reconcileAttempts: (fresh.reconcileAttempts || 0) + 1
         });
         await repos.purchase.save(updated);
+        stillPending = true;
+        transitioned = true;
       });
-      return { stillPending: true };
+      if (discrepancy) metrics.reconcileDiscrepancy();
+      if (transitioned) metrics.purchaseState('PENDING');
+      return { stillPending };
     }
 
+    let rejected = false;
+    let transitioned = false;
+    let discrepancy = false;
     await this.unitOfWork.run(async (repos) => {
       const fresh = await repos.purchase.findById(purchase.id);
       if (!fresh) return;
+      if (this.isDiscrepancy(fresh.status, validation)) {
+        discrepancy = true;
+      }
+      if (fresh.status === 'CREDITED') {
+        return;
+      }
+      if (fresh.status === 'REJECTED') {
+        const updated = new Purchase({
+          ...fresh,
+          reconciledAt: new Date().toISOString(),
+          reconcileAttempts: (fresh.reconcileAttempts || 0) + 1
+        });
+        await repos.purchase.save(updated);
+        rejected = true;
+        return;
+      }
       const updated = new Purchase({
         ...fresh,
         status: 'REJECTED',
@@ -169,8 +231,24 @@ export class PaymentReconcilerService {
         reconcileAttempts: (fresh.reconcileAttempts || 0) + 1
       });
       await repos.purchase.save(updated);
+      rejected = true;
+      transitioned = true;
     });
 
-    return { rejected: true };
+    if (discrepancy) metrics.reconcileDiscrepancy();
+    if (transitioned) metrics.purchaseState('REJECTED');
+    return { rejected };
+  }
+
+  async updatePendingPurchaseAge() {
+    const pending = await this.purchaseRepository.findPendingForReconcile(1);
+    if (!pending?.length) {
+      metrics.setPendingPurchaseAge(0);
+      return 0;
+    }
+    const oldest = pending[0];
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(oldest.createdAt).getTime()) / 1000));
+    metrics.setPendingPurchaseAge(ageSeconds);
+    return ageSeconds;
   }
 }
