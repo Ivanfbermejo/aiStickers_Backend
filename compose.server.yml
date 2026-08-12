@@ -1,0 +1,9 @@
+# Server-only overrides for compose.dev.yml.
+# PostgreSQL and Redis remain reachable by backend/worker on the private
+# Compose network but are never published on the host.
+services:
+  db:
+    ports: !override []
+
+  redis:
+    ports: !override []
