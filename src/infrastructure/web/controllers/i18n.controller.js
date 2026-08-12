@@ -1,4 +1,5 @@
 import { I18nService } from '../../../services/i18n.service.js';
+import { getLogger } from '../../observability/logger.js';
 
 export const I18nController = {
   getTranslations(req, res) {
@@ -26,7 +27,7 @@ export const I18nController = {
 
     } catch (error) {
       const notFound = error.message?.startsWith('translations_not_found');
-      console.error('[i18n] Error:', error.message);
+      getLogger().error({ err: error }, '[i18n] Error:');
       res.status(notFound ? 404 : 500).json({ error: error.message || 'failed_to_load_translations' });
     }
   }

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Balance } from '../../../domain/entities/balance.entity.js';
 import { IBalanceRepository } from '../../../domain/repositories/balance.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Balance Repository Implementation
@@ -29,7 +30,7 @@ export class JsonBalanceRepository extends IBalanceRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load balances:', err);
+      getLogger().error({ err }, 'Failed to load balances:');
       this.cache = new Map();
     }
   }

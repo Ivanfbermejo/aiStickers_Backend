@@ -8,13 +8,11 @@ export class AuthenticateGoogleUseCase {
   constructor({
     userRepository,
     balanceRepository,
-    googleAuthService,
-    jwtService
+    googleAuthService
   }) {
     this.userRepository = userRepository;
     this.balanceRepository = balanceRepository;
     this.googleAuthService = googleAuthService;
-    this.jwtService = jwtService;
   }
   
   /**
@@ -27,35 +25,31 @@ export class AuthenticateGoogleUseCase {
     // 1. Verify Google token
     const googleProfile = await this.googleAuthService.verifyIdToken(idToken);
     
-    // 2. Find or create user
-    let user = await this.userRepository.findByEmail(googleProfile.email);
-    
+    // 2. Find or create user based on the immutable Google sub identity
+    let user = await this.userRepository.findByGoogleId(googleProfile.sub);
+
     if (!user) {
-      // Create new user from Google profile
-      user = User.fromGoogleProfile(googleProfile);
-      await this.userRepository.save(user);
-      
-      // Create initial balance
-      await this.balanceRepository.createForUser(user.id);
-    } else {
-      // Update Google ID if not set
-      if (!user.googleId && googleProfile.sub) {
+      user = await this.userRepository.findByEmail(googleProfile.email);
+
+      if (user) {
+        // Link the Google identity to the existing email account only if it has no other Google id
+        if (user.googleId && user.googleId !== googleProfile.sub) {
+          throw new Error('Google identity conflict');
+        }
         user.googleId = googleProfile.sub;
         await this.userRepository.update(user);
+      } else {
+        // Create new user from Google profile
+        user = User.fromGoogleProfile(googleProfile);
+        await this.userRepository.save(user);
+
+        // Create initial balance
+        await this.balanceRepository.createForUser(user.id);
       }
     }
     
-    // 3. Generate JWT
-    const token = this.jwtService.generateUserToken({
-      sub: user.id, // Use email as primary identifier
-      email: user.email,
-      name: user.name,
-      googleId: user.googleId
-    });
-    
-    // 4. Return result
+    // 3. Return authenticated user; the caller creates the session and tokens
     return {
-      token,
       user: {
         id: user.id,
         email: user.email,

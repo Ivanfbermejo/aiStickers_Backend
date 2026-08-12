@@ -1,4 +1,5 @@
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Plan Controller
@@ -24,7 +25,7 @@ export class PlanController {
         }))
       });
     } catch (error) {
-      console.error('Get plans failed:', error);
+      getLogger().error({ err: error }, 'Get plans failed:');
       res.status(500).json({
         error: 'Failed to retrieve plans',
         message: error.message

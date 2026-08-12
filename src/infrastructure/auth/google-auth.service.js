@@ -1,5 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
 import { env } from '../../config/env.js';
+import { getLogger } from '../observability/logger.js';
 
 /**
  * Google Authentication Service
@@ -23,16 +24,20 @@ export class GoogleAuthService {
       });
       
       const payload = ticket.getPayload();
-      
+
+      if (!payload.email_verified) {
+        throw new Error('Google email not verified');
+      }
+
       return {
-        sub: payload.sub, // Google unique ID
+        sub: payload.sub, // Google unique ID (immutable identifier)
         email: payload.email,
         name: payload.name,
         picture: payload.picture,
         emailVerified: payload.email_verified
       };
     } catch (error) {
-      console.error('Google token verification failed:', error);
+      getLogger().error({ err: error }, 'Google token verification failed:');
       throw new Error('Invalid Google token');
     }
   }

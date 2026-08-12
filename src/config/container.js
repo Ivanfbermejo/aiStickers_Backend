@@ -1,20 +1,20 @@
-import { JsonUserRepository } from '../infrastructure/persistence/json/json-user.repository.js';
-import { JsonBalanceRepository } from '../infrastructure/persistence/json/json-balance.repository.js';
-import { JsonTransactionRepository } from '../infrastructure/persistence/json/json-transaction.repository.js';
-import { JsonPurchaseRepository } from '../infrastructure/persistence/json/json-purchase.repository.js';
-import { JsonStickerRepository } from '../infrastructure/persistence/json/json-sticker.repository.js';
-import { JsonPackageRepository } from '../infrastructure/persistence/json/json-package.repository.js';
-import { JsonGenerationJobRepository } from '../infrastructure/persistence/json/json-generation-job.repository.js';
+import { createRepositories } from '../infrastructure/persistence/factory.js';
+import { createAssetStorage } from '../application/storage/asset-storage.factory.js';
 
 import { JwtService } from '../infrastructure/auth/jwt.service.js';
 import { GoogleAuthService } from '../infrastructure/auth/google-auth.service.js';
 import { PaymentProviderService } from '../infrastructure/payment/payment-provider.service.js';
 import { FraudDetectionService } from '../infrastructure/security/fraud-detection.service.js';
 import { PlanService } from '../application/services/plan.service.js';
+import { CostService } from '../application/services/cost.service.js';
+import { SessionService } from '../application/services/session.service.js';
+import { AssetService } from '../application/services/asset.service.js';
+import { AssetCleanupService } from '../application/services/asset-cleanup.service.js';
 
 import { ReplicateImageProvider } from '../infrastructure/ai/replicate-image.provider.js';
 import { ReplicateAnimationProvider } from '../infrastructure/ai/replicate-animation.provider.js';
 import { GenerationJobWorker } from '../infrastructure/ai/generation-job.worker.js';
+import { GenerationQueueProducer } from '../infrastructure/queue/bullmq-runtime.js';
 
 import { AuthenticateGoogleUseCase } from '../application/use-cases/auth/authenticate-google.use-case.js';
 import { ValidatePurchaseUseCase } from '../application/use-cases/purchase/validate-purchase.use-case.js';
@@ -27,6 +27,7 @@ import { GetGenerationJobUseCase } from '../application/use-cases/generation/get
 import { GetGenerationJobsUseCase } from '../application/use-cases/generation/get-generation-jobs.use-case.js';
 
 import { env } from './env.js';
+import { rootLogger } from '../infrastructure/observability/logger.js';
 
 /**
  * Dependency Injection Container
@@ -47,13 +48,27 @@ export class Container {
     if (this.initialized) return;
     
     // Repositories (Infrastructure)
-    this.repositories.user = new JsonUserRepository(env.DATA_DIR);
-    this.repositories.balance = new JsonBalanceRepository(env.DATA_DIR);
-    this.repositories.transaction = new JsonTransactionRepository(env.DATA_DIR);
-    this.repositories.purchase = new JsonPurchaseRepository(env.DATA_DIR);
-    this.repositories.sticker = new JsonStickerRepository(env.DATA_DIR);
-    this.repositories.package = new JsonPackageRepository(env.DATA_DIR);
-    this.repositories.generationJob = new JsonGenerationJobRepository(env.DATA_DIR);
+    this.repositories = await createRepositories();
+
+    // Queue connections are opened lazily. The HTTP process only produces
+    // durable jobs; the BullMQ consumer is created by worker:generation.
+    this.services.generationQueue = new GenerationQueueProducer();
+
+    // Private object storage for all user assets.
+    this.services.assetStorage = createAssetStorage();
+    this.services.asset = new AssetService({
+      storage: this.services.assetStorage,
+      jwtSecret: env.JWT_SECRET,
+      jwtIssuer: env.JWT_ISSUER,
+      jwtAudience: env.JWT_AUDIENCE,
+      signedUrlExpirySeconds: env.ASSET_STORAGE_SIGNED_URL_EXPIRY_SECONDS
+    });
+    this.services.assetCleanup = new AssetCleanupService({
+      assetService: this.services.asset,
+      dataDir: env.DATA_DIR,
+      queue: this.services.generationQueue,
+      taskRepository: this.repositories.assetCleanupTask
+    });
 
     // Services (Infrastructure)
     this.services.jwt = new JwtService();
@@ -61,6 +76,11 @@ export class Container {
     this.services.paymentProvider = new PaymentProviderService();
     this.services.fraudDetection = new FraudDetectionService();
     this.services.plan = new PlanService();
+    this.services.cost = new CostService();
+    this.services.session = new SessionService({
+      sessionRepository: this.repositories.session,
+      jwtService: this.services.jwt
+    });
 
     // AI Providers (Infrastructure)
     this.services.imageProvider = new ReplicateImageProvider();
@@ -80,7 +100,8 @@ export class Container {
       balanceRepository: this.repositories.balance,
       paymentProviderService: this.services.paymentProvider,
       fraudDetectionService: this.services.fraudDetection,
-      planService: this.services.plan
+      planService: this.services.plan,
+      unitOfWork: this.repositories.unitOfWork
     });
     
     this.useCases.getBalance = new GetBalanceUseCase({
@@ -89,7 +110,9 @@ export class Container {
     
     this.useCases.spendBalance = new SpendBalanceUseCase({
       balanceRepository: this.repositories.balance,
-      transactionRepository: this.repositories.transaction
+      transactionRepository: this.repositories.transaction,
+      costService: this.services.cost,
+      unitOfWork: this.repositories.unitOfWork
     });
     
     this.useCases.getTransactionHistory = new GetTransactionHistoryUseCase({
@@ -98,13 +121,19 @@ export class Container {
 
     this.useCases.refundBalance = new RefundBalanceUseCase({
       balanceRepository: this.repositories.balance,
-      transactionRepository: this.repositories.transaction
+      transactionRepository: this.repositories.transaction,
+      unitOfWork: this.repositories.unitOfWork
     });
 
     this.useCases.createGenerationJob = new CreateGenerationJobUseCase({
       generationJobRepository: this.repositories.generationJob,
       stickerRepository: this.repositories.sticker,
-      spendBalanceUseCase: this.useCases.spendBalance
+      packageRepository: this.repositories.package,
+      spendBalanceUseCase: this.useCases.spendBalance,
+      generationQueue: this.services.generationQueue,
+      unitOfWork: this.repositories.unitOfWork,
+      activeGenerationLimit: env.RATE_LIMIT_GENERATION_ACTIVE,
+      activeGenerationRetryAfterSeconds: env.RATE_LIMIT_WINDOW_SEC
     });
 
     this.useCases.getGenerationJob = new GetGenerationJobUseCase({
@@ -121,12 +150,14 @@ export class Container {
       stickerRepository: this.repositories.sticker,
       imageProvider: this.services.imageProvider,
       animationProvider: this.services.animationProvider,
+      assetService: this.services.asset,
       refundBalanceUseCase: this.useCases.refundBalance,
-      intervalMs: 5000
+      queueTimeoutMs: env.GENERATION_QUEUE_TIMEOUT_MS,
+      lockDurationMs: env.GENERATION_QUEUE_LOCK_DURATION_MS
     });
 
     this.initialized = true;
-    console.log('✅ Dependency container initialized');
+    rootLogger.info('dependency container initialized');
   }
   
   // Getters for clean access

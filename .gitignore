@@ -3,8 +3,18 @@
 **/.env
 **/.env.*
 !.env.example
+!.env.docker.example
+.env.docker
 **/public/uploads/*
 ._*
+
+# Test data
+tmp-data/
+tmp-test-data/
+
+# Coverage / build outputs
+coverage/
+dist/
 
 # Secrets (service accounts, private keys)
 secrets/

@@ -1,6 +1,5 @@
-import jwt from 'jsonwebtoken';
-import { env } from '../../../config/env.js';
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Auth Controller
@@ -13,18 +12,14 @@ export class AuthController {
    */
   static async generateAppToken(req, res) {
     try {
-      const token = jwt.sign(
-        { sub: 'app', type: 'app', scope: ['stickers'] },
-        env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-      
+      const token = container.services.jwt.generateAppToken();
+
       res.json({
         token,
         expiresIn: '24h'
       });
     } catch (error) {
-      console.error('App token generation failed:', error);
+      getLogger().error({ err: error }, 'App token generation failed:');
       res.status(500).json({ error: 'Token generation failed' });
     }
   }
@@ -47,14 +42,21 @@ export class AuthController {
       const result = await container.useCases.authenticateGoogle.execute({
         idToken
       });
-      
+
+      const session = await container.services.session.createSession({
+        userId: result.user.id,
+        metadata: { userAgent: req.headers['user-agent'], ip: req.ip }
+      });
+
       res.json({
         success: true,
-        token: result.token,
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
         user: result.user
       });
     } catch (error) {
-      console.error('Google authentication failed:', error);
+      getLogger().error({ err: error }, 'Google authentication failed:');
       res.status(401).json({ 
         error: 'Authentication failed',
         message: error.message 
@@ -87,65 +89,45 @@ export class AuthController {
    */
   static async refreshToken(req, res) {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ 
-          error: 'Missing token',
-          message: 'Authorization Bearer token is required' 
+      const { refreshToken } = req.body || {};
+      if (!refreshToken) {
+        return res.status(401).json({
+          error: 'Missing refresh token',
+          message: 'refreshToken is required in body'
         });
       }
-      
-      const token = authHeader.substring(7);
-      
-      // Verify token (allow expired for refresh)
-      let decoded;
-      try {
-        decoded = jwt.verify(token, env.JWT_SECRET, { ignoreExpiration: true });
-      } catch (error) {
-        return res.status(401).json({ 
-          error: 'Invalid token',
-          message: 'Token is malformed or invalid' 
-        });
-      }
-      
-      // Ensure it's a user token (not app token)
-      if (decoded.type !== 'user') {
-        return res.status(401).json({ 
-          error: 'Invalid token type',
-          message: 'Only user tokens can be refreshed' 
-        });
-      }
-      
-      // Generate new token with same claims but fresh timestamps
-      // Remove exp and iat from decoded to avoid JWT conflicts
-      const { exp, iat, ...payload } = decoded;
-      const newToken = jwt.sign(
-        payload,
-        env.JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      
+
+      const session = await container.services.session.rotateRefreshToken(refreshToken);
+
       res.json({
         success: true,
-        token: newToken,
-        expiresIn: '7d'
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn
       });
     } catch (error) {
-      console.error('Token refresh failed:', error);
-      res.status(500).json({ 
+      getLogger().error({ err: error }, 'Token refresh failed:');
+      res.status(401).json({
         error: 'Token refresh failed',
-        message: 'Internal server error' 
+        message: 'Invalid, expired or revoked refresh token'
       });
     }
   }
-  
+
   /**
    * Logout
    * POST /api/v1/auth/logout
    */
   static async logout(req, res) {
-    // In JWT-based auth, logout is handled client-side
-    // Server can optionally blacklist tokens if needed
-    res.json({ success: true, message: 'Logged out' });
+    try {
+      const { refreshToken } = req.body || {};
+      if (refreshToken) {
+        await container.services.session.revokeSession(refreshToken);
+      }
+      res.json({ success: true, message: 'Logged out' });
+    } catch (error) {
+      getLogger().error({ err: error }, 'Logout failed:');
+      res.status(500).json({ error: 'Logout failed' });
+    }
   }
 }

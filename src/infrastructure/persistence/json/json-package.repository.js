@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Package } from '../../../domain/entities/package.entity.js';
 import { IPackageRepository } from '../../../domain/repositories/package.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Package Repository Implementation
@@ -29,7 +30,7 @@ export class JsonPackageRepository extends IPackageRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load packages:', err);
+      getLogger().error({ err }, 'Failed to load packages:');
       this.cache = new Map();
     }
   }
@@ -39,9 +40,15 @@ export class JsonPackageRepository extends IPackageRepository {
     await fs.promises.writeFile(this.dbFile, JSON.stringify(data, null, 2));
   }
   
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
+    return new Package(data);
+  }
+
+  async findPublicById(id) {
+    const data = this.cache.get(id);
+    if (!data || data.isPublic !== true) return null;
     return new Package(data);
   }
   
@@ -88,6 +95,12 @@ export class JsonPackageRepository extends IPackageRepository {
       platform: pkg.platform,
       packType: pkg.packType,
       trayIconUrl: pkg.trayIconUrl,
+      trayIconObjectKey: pkg.trayIconObjectKey,
+      trayIconObjectHash: pkg.trayIconObjectHash,
+      trayIconObjectSize: pkg.trayIconObjectSize,
+      trayIconObjectMime: pkg.trayIconObjectMime,
+      trayIconObjectWidth: pkg.trayIconObjectWidth,
+      trayIconObjectHeight: pkg.trayIconObjectHeight,
       exportStatus: pkg.exportStatus,
       whatsappReady: pkg.whatsappReady,
       exportError: pkg.exportError,
@@ -98,11 +111,15 @@ export class JsonPackageRepository extends IPackageRepository {
     return pkg;
   }
   
-  async update(pkg) {
+  async update(pkg, userId = pkg?.userId) {
+    const current = this.cache.get(pkg.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(pkg);
   }
   
-  async delete(id) {
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;

@@ -17,6 +17,12 @@ export class Package {
     platform,
     packType = 'static', // static | animated
     trayIconUrl,
+    trayIconObjectKey,
+    trayIconObjectHash,
+    trayIconObjectSize,
+    trayIconObjectMime,
+    trayIconObjectWidth,
+    trayIconObjectHeight,
     exportStatus = 'pending', // pending, processing, ready, failed
     whatsappReady = false,
     exportError,
@@ -36,6 +42,12 @@ export class Package {
     this.platform = platform;
     this.packType = packType;
     this.trayIconUrl = trayIconUrl;
+    this.trayIconObjectKey = trayIconObjectKey;
+    this.trayIconObjectHash = trayIconObjectHash;
+    this.trayIconObjectSize = trayIconObjectSize;
+    this.trayIconObjectMime = trayIconObjectMime;
+    this.trayIconObjectWidth = trayIconObjectWidth;
+    this.trayIconObjectHeight = trayIconObjectHeight;
     this.exportStatus = exportStatus;
     this.whatsappReady = whatsappReady;
     this.exportError = exportError;
@@ -137,8 +149,14 @@ export class Package {
     this.updatedAt = new Date().toISOString();
   }
   
-  markExportReady({ trayIconUrl, whatsappReady }) {
-    this.trayIconUrl = trayIconUrl;
+  markExportReady({ trayIconObjectKey, trayIconObjectHash, trayIconObjectSize, trayIconObjectMime, trayIconObjectWidth, trayIconObjectHeight, whatsappReady }) {
+    this.trayIconUrl = null;
+    this.trayIconObjectKey = trayIconObjectKey;
+    this.trayIconObjectHash = trayIconObjectHash;
+    this.trayIconObjectSize = trayIconObjectSize;
+    this.trayIconObjectMime = trayIconObjectMime;
+    this.trayIconObjectWidth = trayIconObjectWidth;
+    this.trayIconObjectHeight = trayIconObjectHeight;
     this.whatsappReady = whatsappReady;
     this.exportStatus = whatsappReady ? 'ready' : 'failed';
     this.exportError = null;

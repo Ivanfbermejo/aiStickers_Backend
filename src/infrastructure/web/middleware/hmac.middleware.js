@@ -1,100 +1,163 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
+import { metrics } from '../../observability/metrics.js';
 
-// Helper functions (exactly from clientSign.middleware.js)
+const HMAC_V2 = '2';
+const UUID_NONCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HEX_SIGNATURE = /^[0-9a-f]{64}$/i;
+
 function sha256Hex(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-function hmacHex(secret, str) {
-  return crypto.createHmac('sha256', secret).update(str).digest('hex');
+function hmacHex(secret, message) {
+  return crypto.createHmac('sha256', secret).update(message).digest('hex');
 }
 
-function safeEqHex(a, b) {
-  const A = Buffer.from(a, 'hex');
-  const B = Buffer.from(b, 'hex');
-  return A.length === B.length && crypto.timingSafeEqual(A, B);
+function safeEqHex(received, expected) {
+  if (!HEX_SIGNATURE.test(received) || !HEX_SIGNATURE.test(expected)) return false;
+  const receivedBuffer = Buffer.from(received, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  return receivedBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
-/**
- * HMAC Middleware for request authentication
- * Exact copy of clientSign.middleware.js logic
- */
-export class HmacMiddleware {
-  constructor() {
-    this.clientId = env.CLIENT_ID;
-    this.clientSecret = env.CLIENT_SECRET;
+function isValidTimestamp(value) {
+  if (!/^\d+$/.test(value)) return false;
+  const timestamp = Number(value);
+  return Number.isSafeInteger(timestamp);
+}
+
+function isValidNonce(value) {
+  return UUID_NONCE.test(value);
+}
+
+function isMultipart(req) {
+  return req.headers['content-type']?.toLowerCase().includes('multipart/form-data');
+}
+
+function canonicalMessage({ version, timestamp, nonce, method, path, bodyHash }) {
+  // v2 is intentionally versioned in the signed material. JSON requests are
+  // signed by their raw-body hash, which covers objectKey + hash from T07.
+  if (version === HMAC_V2) {
+    return `v2.${timestamp}.${nonce}.${method}.${path}.${bodyHash}`;
   }
-  
-  /**
-   * Verify HMAC signature (exact copy from clientSign.middleware.js)
-   */
+  // v1 is retained only for the development migration window.
+  return `${timestamp}.${nonce}.${method}.${path}.${bodyHash}`;
+}
+
+export class HmacMiddleware {
+  constructor({ clientId = env.CLIENT_ID, clientSecret = env.CLIENT_SECRET } = {}) {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+  }
+
   async verify(req, res, next) {
-    process.stdout.write(`[HMAC] ${req.method} ${req.path}\n`);
     try {
       const id = req.header('X-App-Id');
-      const ts = req.header('X-App-Timestamp'); // epoch segundos
-      const n = req.header('X-App-Nonce');       // uuid
-      const sig = req.header('X-App-Signature'); // hex
+      const timestamp = req.header('X-App-Timestamp');
+      const nonce = req.header('X-App-Nonce');
+      const signature = req.header('X-App-Signature');
+      const requestedVersion = req.header('X-App-Hmac-Version');
+      const version = requestedVersion || (env.HMAC_LEGACY_V1_ENABLED ? '1' : null);
 
-      if (!id || !ts || !n || !sig) {
-        console.log('\n🔒 Missing signature headers\n');
+      if (!id || !timestamp || !nonce || !signature || !version) {
         return res.status(401).json({ error: 'Missing signature headers' });
       }
 
+      if (version !== '1' && version !== HMAC_V2) {
+        return res.status(401).json({ error: 'Unsupported HMAC version' });
+      }
+      if (version === '1' && !env.HMAC_LEGACY_V1_ENABLED) {
+        return res.status(401).json({ error: 'Legacy HMAC version disabled' });
+      }
       if (id !== this.clientId) {
-        console.log('\n🔒 Invalid app id\n');
         return res.status(401).json({ error: 'Invalid app id' });
+      }
+      if (!isValidTimestamp(timestamp)) {
+        return res.status(401).json({ error: 'Stale/invalid timestamp' });
+      }
+      if (!isValidNonce(nonce)) {
+        return res.status(401).json({ error: 'Invalid nonce' });
+      }
+      if (!HEX_SIGNATURE.test(signature)) {
+        return res.status(401).json({ error: 'Invalid signature format' });
       }
 
       const now = Math.floor(Date.now() / 1000);
-      const t = Number(ts);
-      if (!Number.isFinite(t) || Math.abs(now - t) > env.SIG_WINDOW_SEC) {
-        console.log('\n🔒 Stale/invalid timestamp\n');
+      const timestampNumber = Number(timestamp);
+      if (Math.abs(now - timestampNumber) > env.SIG_WINDOW_SEC) {
         return res.status(401).json({ error: 'Stale/invalid timestamp' });
       }
 
-      // Construimos mensaje canónico (exact copy from clientSign.middleware.js)
+      if (version === '1' && env.NODE_ENV === 'production') {
+        return res.status(401).json({ error: 'Legacy HMAC version disabled' });
+      }
+
       const method = req.method.toUpperCase();
       const path = req.originalUrl.split('?')[0];
-      
-      // Para multipart/form-data (file uploads), usar body vacío porque
-      // multer consume el stream y rawBody no está disponible
-      const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
-      const raw = isMultipart ? Buffer.from('') : (req.rawBody ?? Buffer.from(''));
+      const raw = isMultipart(req) ? Buffer.from('') : (req.rawBody ?? Buffer.from(''));
       const bodyHash = sha256Hex(raw);
+      const message = canonicalMessage({
+        version,
+        timestamp,
+        nonce,
+        method,
+        path,
+        bodyHash
+      });
+      const expected = hmacHex(this.clientSecret, message);
 
-      const msg = `${t}.${n}.${method}.${path}.${bodyHash}`;
-      const expected = hmacHex(this.clientSecret, msg);
-
-      process.stdout.write(`[HMAC] bodyHash=${bodyHash.substring(0,10)} received=${sig.substring(0,10)} expected=${expected.substring(0,10)}\n`);
-
-      if (!safeEqHex(sig, expected)) {
-        process.stdout.write(`[HMAC] ❌ Bad signature\n`);
+      if (!safeEqHex(signature, expected)) {
         return res.status(401).json({ error: 'Bad signature' });
       }
 
-      process.stdout.write(`[HMAC] ✅ OK\n`);
+      const redisSecurity = req.app.locals.redisSecurity;
+      // A future-dated signature remains valid until timestamp + window. Keep
+      // its nonce for that entire interval, not merely one window from now.
+      const nonceValiditySeconds = Math.max(
+        1,
+        Math.ceil(timestampNumber + env.SIG_WINDOW_SEC - Date.now() / 1000)
+      );
+      const claimed = await redisSecurity.claimNonce({
+        clientId: id,
+        nonce,
+        windowSeconds: nonceValiditySeconds
+      });
+      if (!claimed) {
+        return res.status(401).json({ error: 'Replay detected' });
+      }
+
+      req.hmacVersion = version;
+      req.mobileIntegrity = {
+        provider: req.header('X-Integrity-Provider') || null,
+        token: req.header('X-Integrity-Token') || null
+      };
       return next();
-    } catch (e) {
-      console.error('HMAC verify error:', e);
-      return res.status(401).json({ error: 'Signature check failed' });
+    } catch (error) {
+      getLogger().error({ err: error }, 'HMAC verify error');
+      metrics.authFailure('hmac');
+      return res.status(503).json({
+        error: 'Security service unavailable',
+        message: 'Request temporarily unavailable'
+      });
     }
   }
-  
-  /**
-   * Get Express middleware function
-   */
+
   getMiddleware() {
     return (req, res, next) => {
-      this.verify(req, res, next).catch((err) => {
-        console.error('[HMAC] Unhandled error:', err);
-        res.status(500).json({ error: 'Internal error in HMAC verification' });
+      this.verify(req, res, next).catch(error => {
+        getLogger().error({ err: error }, '[HMAC] unhandled error');
+        metrics.authFailure('hmac');
+        res.status(503).json({
+          error: 'Security service unavailable',
+          message: 'Request temporarily unavailable'
+        });
       });
     };
   }
 }
 
-// Singleton instance
 export const hmacMiddleware = new HmacMiddleware();
 export const requireHmac = hmacMiddleware.getMiddleware();

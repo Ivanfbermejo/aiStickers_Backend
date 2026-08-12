@@ -1,18 +1,22 @@
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
-const PORT = process.env.PORT || 22024;
-const DATA_DIR = process.env.DATA_DIR || './tmp-data';
+const PORT = process.env.PORT || 2002;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-
-if (existsSync(DATA_DIR)) {
-  rmSync(DATA_DIR, { recursive: true, force: true });
-}
+const DATA_DIR = mkdtempSync(join(tmpdir(), 'aistickers-smoke-'));
 
 const child = spawn('node', ['index.js'], {
   stdio: 'pipe',
-  env: process.env
+  env: {
+    ...process.env,
+    PORT,
+    DATA_DIR,
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? 'smoke-test-token',
+    NODE_ENV: 'test'
+  }
 });
 
 let output = '';
@@ -47,7 +51,9 @@ if (!healthy) {
   console.error('Smoke start failed: server did not become healthy.');
   console.error(`Last status: ${lastStatus}`);
   console.error(output);
+  rmSync(DATA_DIR, { recursive: true, force: true });
   process.exit(1);
 }
 
+rmSync(DATA_DIR, { recursive: true, force: true });
 console.log(`Smoke start passed: health endpoint OK on port ${PORT}.`);

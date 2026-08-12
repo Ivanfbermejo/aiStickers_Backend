@@ -1,4 +1,5 @@
 import { container } from '../../../config/container.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Payment Controller
@@ -49,7 +50,7 @@ export class PaymentController {
         riskScore: result.riskScore
       });
     } catch (error) {
-      console.error('Purchase validation failed:', error);
+      getLogger().error({ err: error }, 'Purchase validation failed:');
       res.status(400).json({
         success: false,
         error: error.message
@@ -90,7 +91,7 @@ export class PaymentController {
         riskScore: result.riskScore
       });
     } catch (error) {
-      console.error('Apple purchase validation failed:', error);
+      getLogger().error({ err: error }, 'Apple purchase validation failed:');
       res.status(400).json({
         success: false,
         error: error.message

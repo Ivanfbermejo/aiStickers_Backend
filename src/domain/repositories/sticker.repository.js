@@ -3,7 +3,7 @@
  * Defines contract for sticker data access
  */
 export class IStickerRepository {
-  async findById(id) {
+  async findById(id, userId) {
     throw new Error('Method not implemented');
   }
   
@@ -11,11 +11,11 @@ export class IStickerRepository {
     throw new Error('Method not implemented');
   }
   
-  async findByPackageId(packageId) {
+  async findByPackageId(packageId, userId) {
     throw new Error('Method not implemented');
   }
   
-  async findByReplicateId(replicateId) {
+  async findByReplicateId(replicateId, userId) {
     throw new Error('Method not implemented');
   }
   
@@ -27,11 +27,11 @@ export class IStickerRepository {
     throw new Error('Method not implemented');
   }
   
-  async update(sticker) {
+  async update(sticker, userId = sticker?.userId) {
     throw new Error('Method not implemented');
   }
   
-  async delete(id) {
+  async delete(id, userId) {
     throw new Error('Method not implemented');
   }
   

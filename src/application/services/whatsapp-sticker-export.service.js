@@ -3,12 +3,12 @@
  *
  * Converts generated AI assets into WhatsApp-compatible sticker packs.
  * Responsibilities:
- *   - Download source image/video.
+ *   - Download source image/video from private object storage.
  *   - Resize sticker to 512x512 WebP.
  *   - Compress under WhatsApp limits (animated: 500KB, tray: 50KB).
  *   - Generate 96x96 tray icon.
  *   - Validate final assets against WhatsApp constraints.
- *   - Persist final assets in the uploads directory and return public URLs.
+ *   - Persist final assets in private object storage and return signed URLs.
  *
  * WhatsApp constraints:
  *   - Sticker format: WebP (animated or static).
@@ -22,10 +22,17 @@
 
 import fs from 'fs';
 import path from 'path';
-import { nanoid } from 'nanoid';
-import fetch from 'node-fetch';
+import { URL } from 'node:url';
+import { randomId } from '../../utils/random-id.util.js';
 import sharp from 'sharp';
 import { env } from '../../config/env.js';
+import {
+  parseDataUri,
+  validateImageBuffer,
+  downloadSecureUrl,
+  getTrustedProviderHosts,
+  MAX_DOWNLOAD_BYTES
+} from './secure-asset.service.js';
 
 const STICKER_SIZE = 512;
 const TRAY_ICON_SIZE = 96;
@@ -43,22 +50,66 @@ function ensureUploadsDir() {
   }
 }
 
-function publicUrlFor(relativePath) {
-  return `/uploads/${relativePath}`;
+async function readLocalUpload(relativePath) {
+  const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
+  const filePath = path.join(UPLOADS_DIR, safePath);
+  const resolved = await fs.promises.realpath(filePath).catch(() => filePath);
+  const uploadsResolved = path.resolve(UPLOADS_DIR);
+  if (!resolved.startsWith(uploadsResolved + path.sep)) {
+    throw new Error('Invalid upload path');
+  }
+  return fs.promises.readFile(filePath);
 }
 
-async function downloadBuffer(url) {
-  if (url.startsWith('data:')) {
-    const base64 = url.split(',')[1];
-    return Buffer.from(base64, 'base64');
+function isSignedLocalAssetUrl(urlString) {
+  return typeof urlString === 'string' && urlString.startsWith('/api/v1/assets/');
+}
+
+function parseSignedLocalAssetUrl(urlString) {
+  const parsed = new URL(urlString, 'http://localhost');
+  const key = parsed.pathname.replace('/api/v1/assets/', '');
+  const token = parsed.searchParams.get('token');
+  return { key, token };
+}
+
+async function resolveSourceBuffer(source, assetService, ownerId) {
+  if (source?.objectKey && assetService) {
+    const verified = await assetService.readVerifiedObject({ key: source.objectKey, ownerId });
+    return verified.buffer;
   }
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to download asset: ${url} (${res.status})`);
+  const urlString = typeof source === 'string' ? source : source?.url;
+  if (!urlString) {
+    throw new Error('Source asset is required');
   }
-  const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  if (urlString.startsWith('data:')) {
+    const { buffer } = parseDataUri(urlString, MAX_DOWNLOAD_BYTES);
+    await validateImageBuffer(buffer);
+    return buffer;
+  }
+
+  if (urlString.startsWith('/uploads/')) {
+    const buffer = await readLocalUpload(urlString.replace('/uploads/', ''));
+    await validateImageBuffer(buffer);
+    return buffer;
+  }
+
+  if (isSignedLocalAssetUrl(urlString) && assetService) {
+    const { key, token } = parseSignedLocalAssetUrl(urlString);
+    const verifiedKey = assetService.verifySignedToken(token);
+    if (verifiedKey !== key) {
+      throw new Error('Asset token does not match requested key');
+    }
+    const verified = await assetService.readVerifiedObject({ key });
+    return verified.buffer;
+  }
+
+  const buffer = await downloadSecureUrl(urlString, {
+    maxBytes: MAX_DOWNLOAD_BYTES,
+    allowlist: getTrustedProviderHosts()
+  });
+  await validateImageBuffer(buffer);
+  return buffer;
 }
 
 async function detectSourceType(buffer) {
@@ -177,32 +228,38 @@ async function convertTrayIcon(buffer) {
   };
 }
 
-async function saveBuffer(buffer, fileName) {
-  ensureUploadsDir();
-  const filePath = path.join(UPLOADS_DIR, fileName);
-  await fs.promises.writeFile(filePath, buffer);
-  return filePath;
-}
-
 /**
  * Export a single sticker for WhatsApp.
- * @param {string} sourceUrl - URL of the generated image/video.
- * @returns {Promise<{whatsappWebpUrl, width, height, durationMs, sizeBytes, mimeType}>}
+ * @param {string} sourceUrl - Signed URL or external URL of the source image.
+ * @param {AssetService} assetService - Private asset service.
+ * @param {string} ownerId - Asset owner identifier.
+ * @returns {Promise<{whatsappWebpUrl, whatsappObjectKey, whatsappObjectHash, width, height, durationMs, sizeBytes, mimeType}>}
  */
-export async function exportSticker(sourceUrl) {
-  if (!sourceUrl) {
-    throw new Error('sourceUrl is required');
+export async function exportSticker(sourceAsset, assetService, ownerId, idempotencyKey) {
+  if (!sourceAsset) {
+    throw new Error('sourceAsset is required');
+  }
+  if (!assetService || !ownerId) {
+    throw new Error('assetService and ownerId are required');
   }
 
-  const sourceBuffer = await downloadBuffer(sourceUrl);
+  const sourceBuffer = await resolveSourceBuffer(sourceAsset, assetService, ownerId);
   const sourceType = await detectSourceType(sourceBuffer);
   const sticker = await convertSticker(sourceBuffer, sourceType);
 
-  const fileName = `whatsapp_sticker_${nanoid(12)}.webp`;
-  await saveBuffer(sticker.buffer, fileName);
+  const asset = await assetService.storeValidatedBuffer({
+    buffer: sticker.buffer,
+    ownerId,
+    declaredMimeType: sticker.mimeType,
+    idempotencyKey
+  });
+
+  const signedUrl = await assetService.getSignedUrl(asset.key, ownerId);
 
   return {
-    whatsappWebpUrl: publicUrlFor(fileName),
+    whatsappWebpUrl: signedUrl,
+    whatsappObjectKey: asset.key,
+    whatsappObjectHash: asset.hash,
     width: sticker.width,
     height: sticker.height,
     durationMs: sticker.durationMs,
@@ -216,9 +273,15 @@ export async function exportSticker(sourceUrl) {
  * @param {Object} params
  * @param {Array<{id, imageUrl, animatedWebpUrl}>} params.stickers - Stickers to include.
  * @param {string} params.sourceUrl - Optional source image for the tray icon.
- * @returns {Promise<{trayIconUrl, whatsappReady, exportStatus, exportError, stickerResults: Array}>}
+ * @param {AssetService} params.assetService - Private asset service.
+ * @param {string} params.ownerId - Asset owner identifier.
+ * @returns {Promise<{trayIconUrl, trayIconObjectKey, trayIconObjectHash, whatsappReady, exportStatus, exportError, stickerResults: Array}>}
  */
-export async function exportPack({ stickers, sourceUrl }) {
+export async function exportPack({ stickers, sourceUrl, assetService, ownerId, idempotencyKey }) {
+  if (!assetService || !ownerId) {
+    throw new Error('assetService and ownerId are required');
+  }
+
   if (!Array.isArray(stickers) || stickers.length < MIN_PACK_STICKERS || stickers.length > MAX_PACK_STICKERS) {
     throw new Error(`WhatsApp packs need between ${MIN_PACK_STICKERS} and ${MAX_PACK_STICKERS} stickers`);
   }
@@ -229,9 +292,16 @@ export async function exportPack({ stickers, sourceUrl }) {
   let hasFailure = false;
 
   for (const sticker of stickers) {
-    const inputUrl = sticker.animatedWebpUrl || sticker.imageUrl;
+    const inputAsset = sticker.objectKey
+      ? { objectKey: sticker.objectKey }
+      : (sticker.animatedWebpUrl || sticker.imageUrl);
     try {
-      const result = await exportSticker(inputUrl);
+      const result = await exportSticker(
+        inputAsset,
+        assetService,
+        ownerId,
+        `whatsapp-sticker:${sticker.id}:${sticker.objectHash || 'legacy'}`
+      );
       stickerResults.push({ id: sticker.id, ...result });
       if (result.durationMs > 0) {
         hasAnimated = true;
@@ -250,20 +320,33 @@ export async function exportPack({ stickers, sourceUrl }) {
   }
 
   // Tray icon from the first sticker or an optional source URL.
-  const traySourceUrl = sourceUrl || stickers[0]?.imageUrl;
-  if (!traySourceUrl) {
+  const traySource = sourceUrl || (stickers[0]?.objectKey
+    ? { objectKey: stickers[0].objectKey }
+    : stickers[0]?.imageUrl);
+  if (!traySource) {
     throw new Error('Cannot generate tray icon: no source image available');
   }
 
-  const traySourceBuffer = await downloadBuffer(traySourceUrl);
+  const traySourceBuffer = await resolveSourceBuffer(traySource, assetService, ownerId);
   const trayIcon = await convertTrayIcon(traySourceBuffer);
-  const trayFileName = `whatsapp_tray_${nanoid(12)}.webp`;
-  await saveBuffer(trayIcon.buffer, trayFileName);
+  const trayAsset = await assetService.storeValidatedBuffer({
+    buffer: trayIcon.buffer,
+    ownerId,
+    declaredMimeType: trayIcon.mimeType,
+    idempotencyKey
+  });
+  const traySignedUrl = await assetService.getSignedUrl(trayAsset.key, ownerId);
 
   const whatsappReady = !hasFailure && stickerResults.length >= MIN_PACK_STICKERS;
 
   return {
-    trayIconUrl: publicUrlFor(trayFileName),
+    trayIconUrl: traySignedUrl,
+    trayIconObjectKey: trayAsset.key,
+    trayIconObjectHash: trayAsset.hash,
+    trayIconObjectSize: trayAsset.sizeBytes,
+    trayIconObjectMime: trayAsset.mimeType,
+    trayIconObjectWidth: trayAsset.width,
+    trayIconObjectHeight: trayAsset.height,
     whatsappReady,
     exportStatus: whatsappReady ? 'ready' : 'failed',
     exportError: whatsappReady ? null : 'One or more stickers failed to export',
@@ -272,52 +355,60 @@ export async function exportPack({ stickers, sourceUrl }) {
   };
 }
 
-/**
- * Validate a sticker buffer against WhatsApp constraints.
- */
-export async function validateSticker(whatsappWebpUrl) {
-  const buffer = await downloadBuffer(whatsappWebpUrl);
+async function validateBuffer(buffer) {
   const metadata = await sharp(buffer).metadata();
+  return {
+    width: metadata.width,
+    height: metadata.height,
+    sizeBytes: buffer.length,
+    mimeType: 'image/webp'
+  };
+}
+
+/**
+ * Validate a sticker object against WhatsApp constraints.
+ * @param {string} objectKey - Private object key for the WhatsApp WebP.
+ * @param {AssetService} assetService - Private asset service.
+ */
+export async function validateSticker(objectKey, assetService, ownerId) {
+  const { buffer } = await assetService.readVerifiedObject({ key: objectKey, ownerId });
+  const meta = await validateBuffer(buffer);
 
   const errors = [];
-  if (metadata.width !== STICKER_SIZE || metadata.height !== STICKER_SIZE) {
-    errors.push(`Invalid resolution: ${metadata.width}x${metadata.height}, expected ${STICKER_SIZE}x${STICKER_SIZE}`);
+  if (meta.width !== STICKER_SIZE || meta.height !== STICKER_SIZE) {
+    errors.push(`Invalid resolution: ${meta.width}x${meta.height}, expected ${STICKER_SIZE}x${STICKER_SIZE}`);
   }
-  if (buffer.length > MAX_STICKER_SIZE_BYTES) {
-    errors.push(`Sticker too large: ${Math.round(buffer.length / 1024)}KB, max ${MAX_STICKER_SIZE_BYTES / 1024}KB`);
+  if (meta.sizeBytes > MAX_STICKER_SIZE_BYTES) {
+    errors.push(`Sticker too large: ${Math.round(meta.sizeBytes / 1024)}KB, max ${MAX_STICKER_SIZE_BYTES / 1024}KB`);
   }
 
   return {
     valid: errors.length === 0,
-    width: metadata.width,
-    height: metadata.height,
-    sizeBytes: buffer.length,
-    mimeType: 'image/webp',
+    ...meta,
     errors
   };
 }
 
 /**
- * Validate a tray icon buffer against WhatsApp constraints.
+ * Validate a tray icon object against WhatsApp constraints.
+ * @param {string} objectKey - Private object key for the tray icon.
+ * @param {AssetService} assetService - Private asset service.
  */
-export async function validateTrayIcon(trayIconUrl) {
-  const buffer = await downloadBuffer(trayIconUrl);
-  const metadata = await sharp(buffer).metadata();
+export async function validateTrayIcon(objectKey, assetService, ownerId) {
+  const { buffer } = await assetService.readVerifiedObject({ key: objectKey, ownerId });
+  const meta = await validateBuffer(buffer);
 
   const errors = [];
-  if (metadata.width !== TRAY_ICON_SIZE || metadata.height !== TRAY_ICON_SIZE) {
-    errors.push(`Invalid tray icon resolution: ${metadata.width}x${metadata.height}, expected ${TRAY_ICON_SIZE}x${TRAY_ICON_SIZE}`);
+  if (meta.width !== TRAY_ICON_SIZE || meta.height !== TRAY_ICON_SIZE) {
+    errors.push(`Invalid tray icon resolution: ${meta.width}x${meta.height}, expected ${TRAY_ICON_SIZE}x${TRAY_ICON_SIZE}`);
   }
-  if (buffer.length > MAX_TRAY_ICON_SIZE_BYTES) {
-    errors.push(`Tray icon too large: ${Math.round(buffer.length / 1024)}KB, max ${MAX_TRAY_ICON_SIZE_BYTES / 1024}KB`);
+  if (meta.sizeBytes > MAX_TRAY_ICON_SIZE_BYTES) {
+    errors.push(`Tray icon too large: ${Math.round(meta.sizeBytes / 1024)}KB, max ${MAX_TRAY_ICON_SIZE_BYTES / 1024}KB`);
   }
 
   return {
     valid: errors.length === 0,
-    width: metadata.width,
-    height: metadata.height,
-    sizeBytes: buffer.length,
-    mimeType: 'image/webp',
+    ...meta,
     errors
   };
 }

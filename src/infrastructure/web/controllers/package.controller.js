@@ -1,5 +1,37 @@
 import { container } from '../../../config/container.js';
 import { Package } from '../../../domain/entities/package.entity.js';
+import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
+
+async function trayIconUrl(pkg, requesterId) {
+  if (pkg.trayIconObjectKey && pkg.userId === requesterId) {
+    return container.services.asset.getSignedUrl(pkg.trayIconObjectKey, requesterId);
+  }
+  return env.NODE_ENV === 'production' ? null : (pkg.trayIconUrl || null);
+}
+
+async function stickerUrls(sticker, requesterId, ownerId) {
+  const canRead = requesterId === ownerId;
+  const result = {
+    id: sticker.id,
+    name: sticker.name,
+    imageUrl: canRead && sticker.objectKey
+      ? await container.services.asset.getSignedUrl(sticker.objectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.imageUrl),
+    thumbnailUrl: canRead && sticker.objectKey
+      ? await container.services.asset.getSignedUrl(sticker.objectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.thumbnailUrl)
+  };
+  if (canRead) {
+    result.whatsappWebpUrl = sticker.whatsappObjectKey
+      ? await container.services.asset.getSignedUrl(sticker.whatsappObjectKey, requesterId)
+      : (env.NODE_ENV === 'production' ? null : sticker.whatsappWebpUrl);
+    result.exportStatus = sticker.exportStatus;
+    result.exportError = sticker.exportError;
+    result.status = sticker.status;
+  }
+  return result;
+}
 
 /**
  * Package Controller
@@ -26,7 +58,7 @@ export class PackageController {
       return res.json({
         success: true,
         count: packages.length,
-        packages: packages.map(p => ({
+        packages: await Promise.all(packages.map(async p => ({
           id: p.id,
           name: p.name,
           author: p.author,
@@ -37,17 +69,17 @@ export class PackageController {
           tags: p.tags,
           isPublic: p.isPublic,
           packType: p.packType,
-          trayIconUrl: p.trayIconUrl,
+          trayIconUrl: await trayIconUrl(p, userId),
           whatsappReady: p.whatsappReady,
           exportStatus: p.exportStatus,
           exportError: p.exportError,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt
-        }))
+        })))
       });
 
     } catch (error) {
-      console.error('Get user packages error:', error);
+      getLogger().error({ err: error }, 'Get user packages error:');
       return res.status(500).json({
         error: 'Failed to get packages',
         message: error.message
@@ -86,15 +118,13 @@ export class PackageController {
           category: p.category,
           tags: p.tags,
           packType: p.packType,
-          trayIconUrl: p.trayIconUrl,
-          whatsappReady: p.whatsappReady,
-          exportStatus: p.exportStatus,
+          trayIconUrl: env.NODE_ENV === 'production' ? null : p.trayIconUrl,
           createdAt: p.createdAt
         }))
       });
 
     } catch (error) {
-      console.error('Get public packages error:', error);
+      getLogger().error({ err: error }, 'Get public packages error:');
       return res.status(500).json({
         error: 'Failed to get public packages',
         message: error.message
@@ -118,7 +148,10 @@ export class PackageController {
         });
       }
 
-      const pkg = await container.repositories.package.findById(id);
+      let pkg = await container.repositories.package.findById(id, userId);
+      if (!pkg) {
+        pkg = await container.repositories.package.findPublicById(id);
+      }
       
       if (!pkg) {
         return res.status(404).json({
@@ -127,17 +160,10 @@ export class PackageController {
         });
       }
 
-      // Only allow if user owns it or it's public
-      if (pkg.userId !== userId && !pkg.isPublic) {
-        return res.status(403).json({
-          error: 'Forbidden',
-          message: 'You do not have access to this package'
-        });
-      }
-
       // Get stickers in this package
-      const stickers = await container.repositories.sticker.findByPackageId(id);
+      const stickers = await container.repositories.sticker.findByPackageId(id, pkg.userId);
 
+      const isOwner = pkg.userId === userId;
       return res.json({
         success: true,
         package: {
@@ -151,27 +177,20 @@ export class PackageController {
           tags: pkg.tags,
           isPublic: pkg.isPublic,
           packType: pkg.packType,
-          trayIconUrl: pkg.trayIconUrl,
-          whatsappReady: pkg.whatsappReady,
-          exportStatus: pkg.exportStatus,
-          exportError: pkg.exportError,
+          trayIconUrl: await trayIconUrl(pkg, userId),
+          ...(isOwner ? {
+            whatsappReady: pkg.whatsappReady,
+            exportStatus: pkg.exportStatus,
+            exportError: pkg.exportError
+          } : {}),
           createdAt: pkg.createdAt,
           updatedAt: pkg.updatedAt,
-          stickers: stickers.map(s => ({
-            id: s.id,
-            name: s.name,
-            imageUrl: s.imageUrl,
-            thumbnailUrl: s.thumbnailUrl,
-            whatsappWebpUrl: s.whatsappWebpUrl,
-            exportStatus: s.exportStatus,
-            exportError: s.exportError,
-            status: s.status
-          }))
+          stickers: await Promise.all(stickers.map(s => stickerUrls(s, userId, pkg.userId)))
         }
       });
 
     } catch (error) {
-      console.error('Get package by id error:', error);
+      getLogger().error({ err: error }, 'Get package by id error:');
       return res.status(500).json({
         error: 'Failed to get package',
         message: error.message
@@ -234,7 +253,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Create package error:', error);
+      getLogger().error({ err: error }, 'Create package error:');
       return res.status(500).json({
         error: 'Failed to create package',
         message: error.message
@@ -259,9 +278,9 @@ export class PackageController {
         });
       }
 
-      const pkg = await container.repositories.package.findById(id);
+      const pkg = await container.repositories.package.findById(id, userId);
       
-      if (!pkg || pkg.userId !== userId) {
+      if (!pkg) {
         return res.status(404).json({
           error: 'Package not found',
           message: 'Package does not exist or does not belong to user'
@@ -296,7 +315,7 @@ export class PackageController {
         pkg.updatedAt = new Date().toISOString();
       }
 
-      await container.repositories.package.update(pkg);
+      await container.repositories.package.update(pkg, userId);
 
       return res.json({
         success: true,
@@ -311,7 +330,7 @@ export class PackageController {
           category: pkg.category,
           isPublic: pkg.isPublic,
           packType: pkg.packType,
-          trayIconUrl: pkg.trayIconUrl,
+          trayIconUrl: await trayIconUrl(pkg, userId),
           whatsappReady: pkg.whatsappReady,
           exportStatus: pkg.exportStatus,
           exportError: pkg.exportError,
@@ -320,7 +339,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Update package error:', error);
+      getLogger().error({ err: error }, 'Update package error:');
       return res.status(500).json({
         error: 'Failed to update package',
         message: error.message
@@ -344,9 +363,9 @@ export class PackageController {
         });
       }
 
-      const pkg = await container.repositories.package.findById(id);
+      const pkg = await container.repositories.package.findById(id, userId);
       
-      if (!pkg || pkg.userId !== userId) {
+      if (!pkg) {
         return res.status(404).json({
           error: 'Package not found',
           message: 'Package does not exist or does not belong to user'
@@ -354,13 +373,26 @@ export class PackageController {
       }
 
       // Update stickers to remove package reference
-      const stickers = await container.repositories.sticker.findByPackageId(id);
+      const stickers = await container.repositories.sticker.findByPackageId(id, userId);
       for (const sticker of stickers) {
         sticker.packageId = null;
-        await container.repositories.sticker.update(sticker);
+        await container.repositories.sticker.update(sticker, userId);
       }
 
-      await container.repositories.package.delete(id);
+      const cleanupTask = pkg.trayIconObjectKey
+        ? await container.services.assetCleanup.schedule({ key: pkg.trayIconObjectKey, ownerId: userId, entity: `package:${id}` })
+        : null;
+      try {
+        await container.repositories.package.delete(id, userId);
+      } catch (error) {
+        if (cleanupTask) await container.services.assetCleanup.cancel(cleanupTask);
+        throw error;
+      }
+      if (cleanupTask) {
+        await container.services.assetCleanup.confirm(cleanupTask);
+        await container.services.assetCleanup.run(cleanupTask).catch(error => getLogger().error({ err: error }, `[AssetCleanup] deferred cleanup for ${cleanupTask.key}:`));
+      }
+      await container.repositories.telegramPackLink?.deleteByPackageId(id, userId);
 
       return res.json({
         success: true,
@@ -369,7 +401,7 @@ export class PackageController {
       });
 
     } catch (error) {
-      console.error('Delete package error:', error);
+      getLogger().error({ err: error }, 'Delete package error:');
       return res.status(500).json({
         error: 'Failed to delete package',
         message: error.message

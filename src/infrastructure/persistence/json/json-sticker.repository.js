@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Sticker } from '../../../domain/entities/sticker.entity.js';
 import { IStickerRepository } from '../../../domain/repositories/sticker.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON Sticker Repository Implementation
@@ -29,7 +30,7 @@ export class JsonStickerRepository extends IStickerRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load stickers:', err);
+      getLogger().error({ err }, 'Failed to load stickers:');
       this.cache = new Map();
     }
   }
@@ -39,9 +40,9 @@ export class JsonStickerRepository extends IStickerRepository {
     await fs.promises.writeFile(this.dbFile, JSON.stringify(data, null, 2));
   }
   
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
     return new Sticker(data);
   }
   
@@ -52,15 +53,15 @@ export class JsonStickerRepository extends IStickerRepository {
     return stickers.map(s => new Sticker(s));
   }
   
-  async findByPackageId(packageId) {
+  async findByPackageId(packageId, userId) {
     const stickers = Array.from(this.cache.values())
-      .filter(s => s.packageId === packageId)
+      .filter(s => s.packageId === packageId && (!userId || s.userId === userId))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return stickers.map(s => new Sticker(s));
   }
   
-  async findByReplicateId(replicateId) {
-    const data = Array.from(this.cache.values()).find(s => s.replicateId === replicateId);
+  async findByReplicateId(replicateId, userId) {
+    const data = Array.from(this.cache.values()).find(s => s.replicateId === replicateId && (!userId || s.userId === userId));
     if (!data) return null;
     return new Sticker(data);
   }
@@ -83,7 +84,19 @@ export class JsonStickerRepository extends IStickerRepository {
       webpUrl: sticker.webpUrl,
       animatedWebpUrl: sticker.animatedWebpUrl,
       whatsappWebpUrl: sticker.whatsappWebpUrl,
+      whatsappObjectKey: sticker.whatsappObjectKey,
+      whatsappObjectHash: sticker.whatsappObjectHash,
       replicateId: sticker.replicateId,
+      objectKey: sticker.objectKey,
+      objectHash: sticker.objectHash,
+      objectSize: sticker.objectSize,
+      objectMime: sticker.objectMime,
+      objectWidth: sticker.objectWidth,
+      objectHeight: sticker.objectHeight,
+      whatsappObjectSize: sticker.whatsappObjectSize,
+      whatsappObjectMime: sticker.whatsappObjectMime,
+      whatsappObjectWidth: sticker.whatsappObjectWidth,
+      whatsappObjectHeight: sticker.whatsappObjectHeight,
       status: sticker.status,
       prompt: sticker.prompt,
       cost: sticker.cost,
@@ -102,11 +115,15 @@ export class JsonStickerRepository extends IStickerRepository {
     return sticker;
   }
   
-  async update(sticker) {
+  async update(sticker, userId = sticker?.userId) {
+    const current = this.cache.get(sticker.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(sticker);
   }
   
-  async delete(id) {
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;

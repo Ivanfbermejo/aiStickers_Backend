@@ -13,6 +13,7 @@ env:
   CLIENT_ID: ai-stickers-test
   TELEGRAM_BOT_TOKEN: test-token
   DATA_DIR: ./tmp-data
+  IMAGE_TAG: t11b-sanity
 
 jobs:
   sanity:
@@ -24,11 +25,70 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify package.json start script and deploy sanity
-        run: node scripts/deploy-sanity-check.js
+      - name: Run security scan
+        run: node scripts/security-scan.js
+
+      - name: Verify API contract
+        run: node scripts/api-contract-check.js
+
+      - name: Validate Compose files
+        run: |
+          docker compose -f compose.dev.yml config --quiet
+          docker compose -f compose.production.example.yml config --quiet
+
+      - name: Run production preflight with disposable values
+        env:
+          NODE_ENV: production
+          PERSISTENCE_DRIVER: postgres
+          DATABASE_URL: postgresql://preflight:preflight@db.example.test:5432/aistickers
+          REDIS_URL: rediss://redis.example.test:6380
+          ASSET_STORAGE_DRIVER: s3
+          ASSET_STORAGE_BUCKET: preflight-bucket
+          ASSET_STORAGE_REGION: eu-west-1
+          ASSET_STORAGE_ENDPOINT: https://s3.example.test
+          ASSET_STORAGE_ACCESS_KEY_ID: preflight-access-key
+          ASSET_STORAGE_SECRET_ACCESS_KEY: preflight-secret-key
+          JWT_SECRET: preflight-jwt-secret-with-at-least-32-characters
+          CLIENT_ID: preflight-client
+          CLIENT_SECRET: preflight-client-secret-with-at-least-32-chars
+          GOOGLE_CLIENT_ID: preflight-google-client
+          GOOGLE_CLIENT_SECRET: preflight-google-client-secret
+          GOOGLE_PACKAGE_NAME: com.animatedsticker.aistickers
+          GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"preflight-project","client_email":"preflight@example.test","private_key":"preflight-private-key"}'
+          REPLICATE_API_TOKEN: preflight-replicate-token
+          REPLICATE_MODEL: google/nano-banana
+          REPLICATE_IMG2VID_MODEL: bytedance/seedance-1-pro
+          CORS_ORIGINS: https://app.example.test
+          HMAC_LEGACY_V1_ENABLED: "false"
+          ENABLE_TEST_JWTS: "false"
+          ENABLE_APPLE_PAYMENTS: "false"
+          ENABLE_TELEGRAM: "false"
+          ENABLE_WHATSAPP_EXPORT: "false"
+          GENERATION_QUEUE_ENABLED: "true"
+          METRICS_ENABLED: "false"
+        run: npm run production:preflight
+
+      - name: Build and smoke the production image
+        run: node scripts/docker-production-smoke.js
+
+      - name: Audit production dependencies
+        run: |
+          set +e
+          npm audit --omit=dev --json > npm-audit.json
+          audit_status=$?
+          set -e
+          cat npm-audit.json
+          exit "$audit_status"
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-sanity-npm-audit-report
+          path: npm-audit.json

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { env } from '../../../config/env.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * Style Controller
@@ -27,8 +28,8 @@ export class StyleController {
       });
       
     } catch (error) {
-      console.error('[StyleController] Error loading styles:', error);
-      
+      getLogger().error({ err: error }, '[StyleController] Error loading styles:');
+
       // Fallback to default styles if file missing
       const fallbackStyles = [
         {

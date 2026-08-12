@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { GenerationJob } from '../../../domain/entities/generation-job.entity.js';
 import { IGenerationJobRepository } from '../../../domain/repositories/generation-job.repository.js';
+import { getLogger } from '../../observability/logger.js';
 
 /**
  * JSON GenerationJob Repository Implementation
@@ -29,7 +30,7 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
       const parsed = JSON.parse(data);
       this.cache = new Map(Object.entries(parsed));
     } catch (err) {
-      console.error('Failed to load generation jobs:', err);
+      getLogger().error({ err }, 'Failed to load generation jobs:');
       this.cache = new Map();
     }
   }
@@ -52,7 +53,12 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
       input: job.input,
       result: job.result,
       provider: job.provider,
+      providerPredictionId: job.providerPredictionId,
       cost: job.cost,
+      attempts: job.attempts,
+      lockedAt: job.lockedAt,
+      completedAt: job.completedAt,
+      refundedAt: job.refundedAt,
       errorMessage: job.errorMessage,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt
@@ -65,13 +71,15 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     return job;
   }
 
-  async update(job) {
+  async update(job, userId = job?.userId) {
+    const current = this.cache.get(job.id);
+    if (!current || (userId && current.userId !== userId)) return false;
     return this.save(job);
   }
 
-  async findById(id) {
+  async findById(id, userId) {
     const data = this.cache.get(id);
-    if (!data) return null;
+    if (!data || (userId && data.userId !== userId)) return null;
     return new GenerationJob(data);
   }
 
@@ -89,13 +97,31 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     return jobs.map(j => new GenerationJob(j));
   }
 
-  async findByStickerId(stickerId) {
-    const data = Array.from(this.cache.values()).find(j => j.stickerId === stickerId);
+  async findRecoverable(limit = 100) {
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    const jobs = Array.from(this.cache.values())
+      .filter(job => job.status === 'queued' ||
+        (job.status === 'processing' && (!job.lockedAt || new Date(job.lockedAt).getTime() < cutoff)))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .slice(0, limit);
+    return jobs.map(job => new GenerationJob(job));
+  }
+
+  async findByStickerId(stickerId, userId) {
+    const data = Array.from(this.cache.values()).find(j => j.stickerId === stickerId && (!userId || j.userId === userId));
     if (!data) return null;
     return new GenerationJob(data);
   }
 
-  async delete(id) {
+  async findByProviderPredictionId(providerPredictionId, userId) {
+    const data = Array.from(this.cache.values()).find(j => j.providerPredictionId === providerPredictionId && (!userId || j.userId === userId));
+    if (!data) return null;
+    return new GenerationJob(data);
+  }
+
+  async delete(id, userId) {
+    const current = this.cache.get(id);
+    if (!current || (userId && current.userId !== userId)) return false;
     this.cache.delete(id);
     await this.saveToFile();
     return true;
@@ -109,5 +135,27 @@ export class JsonGenerationJobRepository extends IGenerationJobRepository {
     }
     await this.saveToFile();
     return toDelete.length;
+  }
+
+  async claimNextPendingJob() {
+    const data = Array.from(this.cache.values())
+      .filter(j => j.status === 'queued')
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+    if (!data) return null;
+    const job = new GenerationJob(data);
+    job.markProcessing();
+    await this.save(job);
+    return job;
+  }
+
+  async claimJob(id, lockTimeoutMs = 5 * 60 * 1000) {
+    const data = this.cache.get(id);
+    if (!data) return null;
+    const stale = !data.lockedAt || new Date(data.lockedAt).getTime() < Date.now() - lockTimeoutMs;
+    if (!stale || ['completed', 'failed', 'cancelled'].includes(data.status)) return null;
+    const job = new GenerationJob(data);
+    job.markProcessing('processing');
+    await this.save(job);
+    return job;
   }
 }

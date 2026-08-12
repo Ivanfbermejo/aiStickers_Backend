@@ -3,7 +3,11 @@
  * Defines contract for package data access
  */
 export class IPackageRepository {
-  async findById(id) {
+  async findById(id, userId) {
+    throw new Error('Method not implemented');
+  }
+
+  async findPublicById(id) {
     throw new Error('Method not implemented');
   }
   
@@ -27,11 +31,11 @@ export class IPackageRepository {
     throw new Error('Method not implemented');
   }
   
-  async update(pkg) {
+  async update(pkg, userId = pkg?.userId) {
     throw new Error('Method not implemented');
   }
   
-  async delete(id) {
+  async delete(id, userId) {
     throw new Error('Method not implemented');
   }
   

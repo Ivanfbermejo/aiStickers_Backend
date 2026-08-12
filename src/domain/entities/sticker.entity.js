@@ -13,7 +13,19 @@ export class Sticker {
     webpUrl,
     animatedWebpUrl,
     whatsappWebpUrl,
+    whatsappObjectKey,
+    whatsappObjectHash,
     replicateId,
+    objectKey,
+    objectHash,
+    objectSize,
+    objectMime,
+    objectWidth,
+    objectHeight,
+    whatsappObjectSize,
+    whatsappObjectMime,
+    whatsappObjectWidth,
+    whatsappObjectHeight,
     status = 'pending',
     prompt,
     cost = 1,
@@ -36,7 +48,19 @@ export class Sticker {
     this.webpUrl = webpUrl;
     this.animatedWebpUrl = animatedWebpUrl;
     this.whatsappWebpUrl = whatsappWebpUrl;
+    this.whatsappObjectKey = whatsappObjectKey || null;
+    this.whatsappObjectHash = whatsappObjectHash || null;
     this.replicateId = replicateId;
+    this.objectKey = objectKey;
+    this.objectHash = objectHash;
+    this.objectSize = objectSize;
+    this.objectMime = objectMime;
+    this.objectWidth = objectWidth;
+    this.objectHeight = objectHeight;
+    this.whatsappObjectSize = whatsappObjectSize;
+    this.whatsappObjectMime = whatsappObjectMime;
+    this.whatsappObjectWidth = whatsappObjectWidth;
+    this.whatsappObjectHeight = whatsappObjectHeight;
     this.status = status; // pending, processing, done, error
     this.prompt = prompt;
     this.cost = cost;
@@ -60,8 +84,8 @@ export class Sticker {
     if (!this.userId) {
       throw new Error('User ID is required');
     }
-    if (!this.imageUrl && this.status === 'done') {
-      throw new Error('Image URL is required for completed stickers');
+    if (!this.imageUrl && !this.objectKey && this.status === 'done') {
+      throw new Error('Object key or image URL is required for completed stickers');
     }
   }
   
@@ -74,6 +98,23 @@ export class Sticker {
     this.status = 'done';
     this.imageUrl = imageUrl;
     this.thumbnailUrl = thumbnailUrl;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  markAsStoredAsset(asset) {
+    this.status = 'done';
+    this.imageUrl = null;
+    this.thumbnailUrl = null;
+    this.objectKey = asset.key;
+    this.objectHash = asset.hash;
+    this.objectSize = asset.sizeBytes;
+    this.objectMime = asset.mimeType;
+    this.objectWidth = asset.width;
+    this.objectHeight = asset.height;
+    this.width = asset.width;
+    this.height = asset.height;
+    this.sizeBytes = asset.sizeBytes;
+    this.mimeType = asset.mimeType;
     this.updatedAt = new Date().toISOString();
   }
   
@@ -92,7 +133,33 @@ export class Sticker {
     this.packageId = packageId;
     this.updatedAt = new Date().toISOString();
   }
-  
+
+  setObjectKey(objectKey) {
+    this.objectKey = objectKey;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  setObjectHash(objectHash) {
+    this.objectHash = objectHash;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  setObjectSize(objectSize) {
+    this.objectSize = objectSize;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  setObjectMime(objectMime) {
+    this.objectMime = objectMime;
+    this.updatedAt = new Date().toISOString();
+  }
+
+  setObjectDimensions(width, height) {
+    this.width = width;
+    this.height = height;
+    this.updatedAt = new Date().toISOString();
+  }
+
   isProcessing() {
     return this.status === 'processing';
   }
@@ -111,10 +178,14 @@ export class Sticker {
     this.updatedAt = new Date().toISOString();
   }
   
-  markExportReady({ whatsappWebpUrl, width, height, durationMs, sizeBytes, mimeType }) {
-    this.whatsappWebpUrl = whatsappWebpUrl;
-    this.width = width;
-    this.height = height;
+  markExportReady({ whatsappObjectKey, whatsappObjectHash, width, height, durationMs, sizeBytes, mimeType }) {
+    this.whatsappWebpUrl = null;
+    this.whatsappObjectKey = whatsappObjectKey;
+    this.whatsappObjectHash = whatsappObjectHash;
+    this.whatsappObjectSize = sizeBytes;
+    this.whatsappObjectMime = mimeType;
+    this.whatsappObjectWidth = width;
+    this.whatsappObjectHeight = height;
     this.durationMs = durationMs;
     this.sizeBytes = sizeBytes;
     this.mimeType = mimeType;
