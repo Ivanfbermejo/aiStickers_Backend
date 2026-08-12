@@ -153,7 +153,7 @@ if [[ "$RESET_UNINITIALIZED_DB" == true ]] \
   printf 'Comprobando que %s nunca fue inicializado...\n' "$DB_VOLUME"
   if docker run --rm \
     --volume "${DB_VOLUME}:/data:ro" \
-    postgres:16-alpine \
+    postgres:16-alpine3.22 \
     test -f /data/PG_VERSION; then
     die "${DB_VOLUME} contiene PG_VERSION; se rechaza el reset para proteger la base existente"
   fi

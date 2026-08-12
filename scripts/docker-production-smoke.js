@@ -171,7 +171,7 @@ async function main() {
       '--env', 'POSTGRES_DB=aistickers',
       '--health-cmd', 'pg_isready -U aistickers -d aistickers',
       '--health-interval', '2s', '--health-timeout', '5s', '--health-retries', '30',
-      'postgres:16-alpine'
+      'postgres:16-alpine3.22'
     ]);
     await docker([
       'run', '--detach', '--name', names.redis, '--label', label, '--network', network, '--network-alias', 'redis',

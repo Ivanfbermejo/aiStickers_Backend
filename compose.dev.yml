@@ -83,7 +83,10 @@ services:
   # For local development and integration tests it is bound to 127.0.0.1 so the
   # host test runner can reach it; production must never expose the port.
   db:
-    image: postgres:16-alpine
+    # Alpine 3.23/3.24 fails PostgreSQL bootstrap writes on older kernels with
+    # EPERM (docker-library/postgres#1417). Keep 3.22 pinned until the host OS
+    # and Docker engine are upgraded.
+    image: postgres:16-alpine3.22
     ports:
       - "127.0.0.1:5432:5432"
     # POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB come from .env.docker
