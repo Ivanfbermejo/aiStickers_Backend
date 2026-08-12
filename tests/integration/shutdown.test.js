@@ -159,54 +159,78 @@ describe('shutdown', () => {
   });
 
   it('double SIGTERM handler in index.js does not start two shutdowns', async () => {
-    const port = await getFreePort();
-    const dataDir = mkdtempSync(path.join(tmpdir(), 'aistickers-shutdown-sigterm-'));
+    let dataDir;
+    let proc;
+    let exitPromise;
+    let hangReq;
 
-    const childEnv = {
-      ...process.env,
-      NODE_ENV: 'test',
-      PORT: String(port),
-      SHUTDOWN_TIMEOUT_MS: '500',
-      DATA_DIR: dataDir,
-      GENERATION_QUEUE_ENABLED: 'false',
-      CLIENT_SECRET: randomBytes(32).toString('hex'),
-      JWT_SECRET: randomBytes(32).toString('hex'),
-      LOG_LEVEL: 'info'
-    };
+    try {
+      const port = await getFreePort();
+      dataDir = mkdtempSync(path.join(tmpdir(), 'aistickers-shutdown-sigterm-'));
 
-    const proc = fork(indexPath, [], { env: childEnv, silent: true });
-    let logs = '';
-    proc.stdout?.on('data', (data) => {
-      logs += data.toString();
-    });
-    proc.stderr?.on('data', (data) => {
-      logs += data.toString();
-    });
+      const childEnv = {
+        ...process.env,
+        NODE_ENV: 'test',
+        PORT: String(port),
+        SHUTDOWN_TIMEOUT_MS: '500',
+        DATA_DIR: dataDir,
+        GENERATION_QUEUE_ENABLED: 'false',
+        CLIENT_SECRET: randomBytes(32).toString('hex'),
+        JWT_SECRET: randomBytes(32).toString('hex'),
+        LOG_LEVEL: 'info'
+      };
 
-    await waitFor(() => logs.includes('server listening'), 20000);
+      proc = fork(indexPath, [], { env: childEnv, silent: true });
+      exitPromise = new Promise(resolve => proc.once('exit', resolve));
 
-    // Keep an idle connection open so the server does not shut down immediately.
-    const hangReq = http.request({
-      host: '127.0.0.1',
-      port,
-      path: '/health',
-      method: 'GET',
-      headers: { 'Content-Length': '1000' }
-    });
-    hangReq.write('partial');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+      let logs = '';
+      proc.stdout?.on('data', (data) => {
+        logs += data.toString();
+      });
+      proc.stderr?.on('data', (data) => {
+        logs += data.toString();
+      });
 
-    proc.kill('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    proc.kill('SIGTERM');
+      await waitFor(() => logs.includes('server listening'), 20000);
 
-    const exitCode = await new Promise((resolve) => proc.on('exit', resolve));
+      // Keep an idle connection open so the server does not shut down immediately.
+      hangReq = http.request({
+        host: '127.0.0.1',
+        port,
+        path: '/health',
+        method: 'GET',
+        headers: { 'Content-Length': '1000' }
+      });
+      hangReq.on('error', () => {});
+      await new Promise((resolve, reject) => {
+        hangReq.once('socket', (socket) => {
+          if (!socket.connecting) {
+            resolve();
+            return;
+          }
+          socket.once('connect', resolve);
+          socket.once('error', reject);
+        });
+        hangReq.once('error', reject);
+      });
+      hangReq.write('partial');
 
-    hangReq.destroy();
-    rmSync(dataDir, { recursive: true, force: true });
+      proc.kill('SIGTERM');
+      await waitFor(() => logs.includes('received shutdown signal, draining gracefully'));
+      expect(proc.exitCode).toBeNull();
 
-    expect(logs).toContain('received shutdown signal, draining gracefully');
-    expect(logs).toContain('shutdown already in progress');
-    expect([0, 1]).toContain(exitCode);
+      proc.kill('SIGTERM');
+      await waitFor(() => logs.includes('shutdown already in progress'));
+
+      const exitCode = await exitPromise;
+      expect([0, 1]).toContain(exitCode);
+    } finally {
+      hangReq?.destroy();
+      if (proc?.exitCode === null) {
+        proc.kill('SIGKILL');
+        await exitPromise;
+      }
+      if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    }
   }, 20000);
 });
