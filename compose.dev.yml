@@ -88,7 +88,10 @@ services:
     # (the official postgres image reads them directly from its own
     # environment; no compose-level interpolation is used here on purpose).
     env_file:
-      - .env.docker
+      - path: .env.docker.example
+        required: true
+      - path: .env.docker
+        required: false
     volumes:
       - aistickers_dev_db:/var/lib/postgresql/data
     init: true

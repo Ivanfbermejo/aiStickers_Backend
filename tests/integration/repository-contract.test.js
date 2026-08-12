@@ -153,6 +153,7 @@ for (const driver of drivers) {
 
     beforeAll(async () => {
       if (driver.name === 'postgres') {
+        await migrateDeploy(getBaseDatabaseUrl());
         await clearPostgresDatabase();
       }
     });
