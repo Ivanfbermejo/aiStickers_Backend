@@ -17,7 +17,9 @@ services:
       ASSET_STORAGE_LOCAL_BASE_DIR: /app/data
       REDIS_URL: redis://redis:6379
     ports:
-      - "127.0.0.1:2002:2002"
+      # Apache proxies the public API to this loopback-only host port.
+      # BACKEND_HOST_PORT can override 2002 for an isolated test deployment.
+      - "127.0.0.1:${BACKEND_HOST_PORT:-2002}:2002"
     volumes:
       - aistickers_dev_data:/app/data
     depends_on:
