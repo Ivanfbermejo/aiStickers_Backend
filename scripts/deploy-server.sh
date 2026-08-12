@@ -206,7 +206,7 @@ docker run --rm --user 0:0 \
   sh -c 'tar -C /app/data -czf /backup/data.tar.gz .'
 
 printf 'Aplicando migraciones Prisma...\n'
-"${compose[@]}" run --rm --no-deps backend npx prisma migrate deploy
+"${compose[@]}" run --rm --no-deps --entrypoint npx backend prisma migrate deploy
 
 if [[ "$SKIP_JSON_IMPORT" == false ]]; then
   json_files=(
@@ -224,11 +224,11 @@ if [[ "$SKIP_JSON_IMPORT" == false ]]; then
 
   if ((json_count == ${#json_files[@]})); then
     printf 'Validando importación JSON a PostgreSQL (dry-run)...\n'
-    "${compose[@]}" run --rm --no-deps backend \
-      node scripts/import-json-to-postgres.js --source /app/data
+    "${compose[@]}" run --rm --no-deps --entrypoint node backend \
+      scripts/import-json-to-postgres.js --source /app/data
     printf 'Importando JSON a PostgreSQL de forma idempotente...\n'
-    "${compose[@]}" run --rm --no-deps backend \
-      node scripts/import-json-to-postgres.js --source /app/data --commit
+    "${compose[@]}" run --rm --no-deps --entrypoint node backend \
+      scripts/import-json-to-postgres.js --source /app/data --commit
   elif ((json_count > 0)); then
     die "el volumen contiene solo ${json_count}/${#json_files[@]} archivos JSON requeridos; se cancela la importación"
   else

@@ -2,6 +2,13 @@
 # PostgreSQL and Redis remain reachable by backend/worker on the private
 # Compose network but are never published on the host.
 services:
+  # The Node image entrypoint exits before exec'ing `node index.js` on the
+  # legacy CentOS 7 / Docker 20.10 host. The worker's npm command is not
+  # affected, so bypass the image entrypoint only for the HTTP service.
+  backend:
+    entrypoint: ["node"]
+    command: ["index.js"]
+
   db:
     ports: !override []
 
