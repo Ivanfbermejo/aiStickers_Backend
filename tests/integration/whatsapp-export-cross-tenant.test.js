@@ -1,10 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import sharp from 'sharp';
 
 // WhatsApp export routes are only registered when ENABLE_WHATSAPP_EXPORT is
 // true. Set this before server.js (and src/config/env.js) is ever imported.
+const originalEnv = { ...process.env };
 process.env.ENABLE_WHATSAPP_EXPORT = 'true';
+
+afterAll(async () => {
+  Object.keys(process.env).forEach(key => delete process.env[key]);
+  Object.assign(process.env, originalEnv);
+  await vi.resetModules();
+});
 
 const { buildTestApp } = await import('../helpers/app.js');
 const { signRequest } = await import('../helpers/hmac.js');

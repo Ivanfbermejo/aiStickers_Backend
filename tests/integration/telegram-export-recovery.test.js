@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import crypto from 'node:crypto';
 import request from 'supertest';
 import sharp from 'sharp';
@@ -7,7 +7,14 @@ import sharp from 'sharp';
 // be set before server.js (and therefore src/config/env.js) is ever imported,
 // which happens lazily inside buildTestApp() — so setting it here, after the
 // static imports above but before any test runs, is sufficient.
+const originalEnv = { ...process.env };
 process.env.ENABLE_TELEGRAM = 'true';
+
+afterAll(async () => {
+  Object.keys(process.env).forEach(key => delete process.env[key]);
+  Object.assign(process.env, originalEnv);
+  await vi.resetModules();
+});
 
 const { buildTestApp } = await import('../helpers/app.js');
 const { signRequest } = await import('../helpers/hmac.js');

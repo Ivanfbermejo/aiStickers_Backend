@@ -98,7 +98,7 @@ jobs:
         run: npm test
 
       - name: Run the real restore drill
-        run: npx vitest run tests/integration/restore-drill.test.js
+        run: npx vitest run --threads=false tests/integration/restore-drill.test.js
 
       - name: Verify MinIO volume survives service recreation
         run: |

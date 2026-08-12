@@ -1,7 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 
+const originalEnv = { ...process.env };
 process.env.ENABLE_TELEGRAM = 'true';
 process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+
+afterAll(async () => {
+  Object.keys(process.env).forEach(key => delete process.env[key]);
+  Object.assign(process.env, originalEnv);
+  await vi.resetModules();
+});
 
 const { exportPack, reconcilePack } = await import('../../src/application/services/telegram.service.js');
 
