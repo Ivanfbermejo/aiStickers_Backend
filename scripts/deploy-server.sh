@@ -9,10 +9,12 @@ readonly SERVER_COMPOSE_FILE="${REPO_ROOT}/compose.server.yml"
 readonly ENV_FILE="${REPO_ROOT}/.env.docker"
 readonly IMAGE="aistickers-backend:dev"
 readonly ROLLBACK_IMAGE="aistickers-backend:rollback"
+readonly DB_VOLUME="aistickers_dev_db"
 
 BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-120}"
 SKIP_JSON_IMPORT=false
+RESET_UNINITIALIZED_DB=false
 ROLLBACK_AVAILABLE=false
 
 usage() {
@@ -26,6 +28,10 @@ Opciones:
   --host-port PORT     Puerto local detrás de Apache (por defecto: 2002).
   --health-timeout SEC Tiempo máximo para readiness (por defecto: 120).
   --skip-json-import   No intenta importar los datos JSON existentes a PostgreSQL.
+  --reset-uninitialized-db
+                       Recrea el volumen PostgreSQL solo si no contiene PG_VERSION.
+                       Úsalo para recuperar una inicialización fallida; nunca borra
+                       una base PostgreSQL ya inicializada.
   -h, --help           Muestra esta ayuda.
 
 El script conserva los volúmenes, crea backups, aplica migraciones Prisma,
@@ -70,6 +76,10 @@ while (($# > 0)); do
       ;;
     --skip-json-import)
       SKIP_JSON_IMPORT=true
+      shift
+      ;;
+    --reset-uninitialized-db)
+      RESET_UNINITIALIZED_DB=true
       shift
       ;;
     -h|--help)
@@ -137,6 +147,23 @@ trap on_error ERR
 cd "$REPO_ROOT"
 printf 'Validando Compose y configuración...\n'
 "${compose[@]}" config --quiet
+
+if [[ "$RESET_UNINITIALIZED_DB" == true ]] \
+  && docker volume inspect "$DB_VOLUME" >/dev/null 2>&1; then
+  printf 'Comprobando que %s nunca fue inicializado...\n' "$DB_VOLUME"
+  if docker run --rm \
+    --volume "${DB_VOLUME}:/data:ro" \
+    postgres:16-alpine \
+    test -f /data/PG_VERSION; then
+    die "${DB_VOLUME} contiene PG_VERSION; se rechaza el reset para proteger la base existente"
+  fi
+
+  printf 'El volumen no contiene PG_VERSION. Recreándolo por solicitud explícita...\n'
+  "${compose[@]}" stop db >/dev/null 2>&1 || true
+  "${compose[@]}" rm --force --stop db >/dev/null 2>&1 || true
+  docker volume rm "$DB_VOLUME" >/dev/null
+  printf 'Volumen PostgreSQL no inicializado recreable eliminado; Compose creará uno nuevo.\n'
+fi
 
 if docker image inspect "$IMAGE" >/dev/null 2>&1; then
   docker tag "$IMAGE" "$ROLLBACK_IMAGE"
