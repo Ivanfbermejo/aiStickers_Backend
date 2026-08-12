@@ -22,7 +22,7 @@ Runs on every PR and push to `main`:
   metrics, non-root execution and SIGTERM shutdown.
 - Runs `npm audit --omit=dev` and uploads the JSON report as an artifact.
 
-Also starts a `postgres:16-alpine` service container so the real-database
+Also starts a `postgres:16-alpine3.22` service container so the real-database
 tests under `tests/integration/postgres/` run (migrations, constraints,
 rollback, connection lifecycle — see `docs/data-model.md`). `DATABASE_URL`
 in this workflow only feeds those tests; the app itself keeps

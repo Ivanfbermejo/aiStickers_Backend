@@ -3,10 +3,6 @@
 # Compose network but are never published on the host.
 services:
   db:
-    # Docker 20.10 on the CentOS 7 development server fails PostgreSQL's
-    # bootstrap writes when Docker's tiny init wrapper is enabled. PostgreSQL
-    # already handles SIGTERM correctly, so do not inject it for this service.
-    init: false
     ports: !override []
 
   redis:
