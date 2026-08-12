@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   sanitizePreflightError,
+  isNodeVersionCompatible,
   validateProductionEnvironment
 } from '../../scripts/production-preflight.js';
 
@@ -11,6 +13,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const dockerfile = readFileSync(path.join(projectRoot, 'Dockerfile'), 'utf8');
 const productionCompose = readFileSync(path.join(projectRoot, 'compose.production.example.yml'), 'utf8');
 const productionSmoke = readFileSync(path.join(projectRoot, 'scripts/docker-production-smoke.js'), 'utf8');
+const deploySanityWorkflow = readFileSync(path.join(projectRoot, '.github/workflows/deploy-sanity.yml'), 'utf8');
 
 function validProductionEnv(overrides = {}) {
   return {
@@ -30,7 +33,7 @@ function validProductionEnv(overrides = {}) {
     GOOGLE_CLIENT_ID: 'preflight-google-client',
     ['GOOGLE_CLIENT' + '_SECRET']: 'preflight-google-client-secret',
     GOOGLE_PACKAGE_NAME: 'com.animatedsticker.aistickers',
-    ['GOOGLE_PLAY_' + 'SERVICE_ACCOUNT']: '{"type":"service_account"}',
+    ['GOOGLE_PLAY_' + 'SERVICE_ACCOUNT']: '{"type":"service_account","project_id":"preflight-project","client_email":"preflight@example.test","private_key":"preflight-private-key"}',
     ['REPLICATE' + '_API_TOKEN']: 'preflight-replicate-token',
     REPLICATE_MODEL: 'google/nano-banana',
     REPLICATE_IMG2VID_MODEL: 'bytedance/seedance-1-pro',
@@ -58,6 +61,67 @@ describe('production release gate', () => {
     const result = validateProductionEnvironment(validProductionEnv());
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
+  });
+
+  it('rejects a missing NODE_ENV instead of assuming production', () => {
+    const env = validProductionEnv();
+    delete env.NODE_ENV;
+    const result = validateProductionEnvironment(env);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/NODE_ENV/);
+  });
+
+  it('rejects NODE_ENV=development', () => {
+    const result = validateProductionEnvironment(validProductionEnv({ NODE_ENV: 'development' }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/NODE_ENV/);
+  });
+
+  it('rejects a Node.js version below the project minimum', () => {
+    expect(isNodeVersionCompatible('18.20.0')).toBe(false);
+    const result = validateProductionEnvironment(validProductionEnv(), { nodeVersion: '18.20.0' });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/Node\.js/);
+  });
+
+  it('rejects external image URLs in the production release', () => {
+    const result = validateProductionEnvironment(validProductionEnv({ ENABLE_EXTERNAL_IMAGE_URLS: 'true' }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/ENABLE_EXTERNAL_IMAGE_URLS/);
+  });
+
+  it('accepts a valid HTTPS Sentry DSN with a public key in URL.username', () => {
+    const result = validateProductionEnvironment(validProductionEnv({
+      ERROR_TRACKING_ENABLED: 'true',
+      SENTRY_DSN: 'https://public@sentry.example.com/123'
+    }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a Sentry DSN with URL.password', () => {
+    const result = validateProductionEnvironment(validProductionEnv({
+      ERROR_TRACKING_ENABLED: 'true',
+      SENTRY_DSN: 'https://public:password@sentry.example.com/123'
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/SENTRY_DSN/);
+  });
+
+  it('rejects CHANGE_ME values without including the value in errors', () => {
+    const result = validateProductionEnvironment(validProductionEnv({
+      ['JWT' + '_SECRET']: 'CHANGE_ME_JWT_SECRET_32_CHARACTERS_MINIMUM'
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/CHANGE_ME/);
+    expect(result.errors.join('\n')).not.toContain('JWT_SECRET_32_CHARACTERS_MINIMUM');
+  });
+
+  it('rejects incomplete Google Play service account credentials', () => {
+    const result = validateProductionEnvironment(validProductionEnv({
+      GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"project","client_email":"client@example.test"}'
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/GOOGLE_PLAY_SERVICE_ACCOUNT/);
   });
 
   it('rejects JSON persistence in production', () => {
@@ -107,6 +171,29 @@ describe('production release gate', () => {
     expect(productionCompose).not.toMatch(/aistickers-backend:latest/);
     expect(serviceBlock('backend')).toContain('image: *app-image');
     expect(serviceBlock('worker')).toContain('image: *app-image');
+    expect(productionCompose).toContain('${IMAGE_TAG:?IMAGE_TAG is required}');
+    expect(productionCompose).not.toContain('CHANGE_ME');
+    expect(productionCompose).toContain('METRICS_ENABLED:-false');
+  });
+
+  it('fails Compose configuration when IMAGE_TAG is absent', () => {
+    const environment = { ...process.env };
+    delete environment.IMAGE_TAG;
+    expect(() => execFileSync(
+      'docker',
+      ['compose', '--env-file', '/dev/null', '-f', 'compose.production.example.yml', 'config', '--quiet'],
+      { cwd: projectRoot, env: environment, stdio: 'pipe' }
+    )).toThrow(/IMAGE_TAG/);
+  });
+
+  it('keeps deploy-sanity limited to release checks without the service-backed test suite', () => {
+    expect(deploySanityWorkflow).not.toContain('npm test');
+    expect(deploySanityWorkflow).not.toMatch(/^\s+services:/m);
+    expect(deploySanityWorkflow).toContain('npm run production:preflight');
+    expect(deploySanityWorkflow).toContain('node scripts/docker-production-smoke.js');
+    expect(deploySanityWorkflow).toContain('node scripts/security-scan.js');
+    expect(deploySanityWorkflow).toContain('node scripts/api-contract-check.js');
+    expect(deploySanityWorkflow).toContain('npm audit --omit=dev');
   });
 
   it('smoke script verifies protected metrics and clean SIGTERM shutdown', () => {

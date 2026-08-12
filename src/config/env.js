@@ -89,6 +89,29 @@ function parseJson(value, name) {
   }
 }
 
+export function isValidGooglePlayServiceAccount(value) {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+
+  let serviceAccount;
+  try {
+    serviceAccount = JSON.parse(value);
+  } catch {
+    return false;
+  }
+
+  if (!serviceAccount || typeof serviceAccount !== 'object' || Array.isArray(serviceAccount)) {
+    return false;
+  }
+
+  return serviceAccount.type === 'service_account'
+    && typeof serviceAccount.project_id === 'string'
+    && serviceAccount.project_id.trim() !== ''
+    && typeof serviceAccount.client_email === 'string'
+    && serviceAccount.client_email.trim() !== ''
+    && typeof serviceAccount.private_key === 'string'
+    && serviceAccount.private_key.trim() !== '';
+}
+
 function parseHostAllowlist(value) {
   if (!value || value.trim() === '') {
     return [];
@@ -321,6 +344,10 @@ export function validateEnv(config) {
     return;
   }
 
+  if (JSON.stringify(config).includes('CHANGE_ME')) {
+    throw new Error('Production configuration must not contain CHANGE_ME');
+  }
+
   if (config.HMAC_LEGACY_V1_ENABLED) {
     throw new Error('HMAC_LEGACY_V1_ENABLED must be false in production');
   }
@@ -359,10 +386,10 @@ export function validateEnv(config) {
   requireString('REPLICATE_IMG2VID_MODEL', 1);
   requireString('GOOGLE_PLAY_SERVICE_ACCOUNT', 1);
 
-  try {
-    JSON.parse(config.GOOGLE_PLAY_SERVICE_ACCOUNT);
-  } catch {
-    throw new Error('GOOGLE_PLAY_SERVICE_ACCOUNT must be valid JSON in production');
+  if (!isValidGooglePlayServiceAccount(config.GOOGLE_PLAY_SERVICE_ACCOUNT)) {
+    throw new Error(
+      'GOOGLE_PLAY_SERVICE_ACCOUNT must be valid JSON with type=service_account, project_id, client_email and private_key in production'
+    );
   }
 
   if (config.ENABLE_APPLE_PAYMENTS) {

@@ -27,6 +27,7 @@ env:
   T08_DATABASE_URL: postgresql://aistickers:aistickers_ci_password@localhost:5432/aistickers_t08_test
   REDIS_URL: redis://localhost:6379
   GENERATION_QUEUE_ENABLED: "true"
+  IMAGE_TAG: t11b-ci
 
 jobs:
   build:
@@ -144,7 +145,7 @@ jobs:
           GOOGLE_CLIENT_ID: preflight-google-client
           GOOGLE_CLIENT_SECRET: preflight-google-client-secret
           GOOGLE_PACKAGE_NAME: com.animatedsticker.aistickers
-          GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account"}'
+          GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"preflight-project","client_email":"preflight@example.test","private_key":"preflight-private-key"}'
           REPLICATE_API_TOKEN: preflight-replicate-token
           REPLICATE_MODEL: google/nano-banana
           REPLICATE_IMG2VID_MODEL: bytedance/seedance-1-pro

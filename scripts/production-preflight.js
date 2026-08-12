@@ -9,7 +9,16 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { loadConfig, validateEnv } from '../src/config/env.js';
+import { isValidSentryDsn } from '../src/infrastructure/observability/sentry-dsn.js';
+
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const NODE_ENGINE = packageJson.engines?.node || 'unspecified';
+const minimumNodeMatch = String(NODE_ENGINE).match(/>=\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+const MINIMUM_NODE_VERSION = minimumNodeMatch
+  ? [Number(minimumNodeMatch[1]), Number(minimumNodeMatch[2] || 0), Number(minimumNodeMatch[3] || 0)]
+  : null;
 
 const DISABLED_RELEASE_FLAGS = [
   'HMAC_LEGACY_V1_ENABLED',
@@ -20,12 +29,26 @@ const DISABLED_RELEASE_FLAGS = [
 ];
 
 const EXTERNAL_URL_VARIABLES = [
-  'ASSET_STORAGE_ENDPOINT',
-  'SENTRY_DSN'
+  'ASSET_STORAGE_ENDPOINT'
 ];
 
 function addError(errors, message) {
   if (!errors.includes(message)) errors.push(message);
+}
+
+function parseNodeVersion(value) {
+  const match = String(value || '').match(/^(\d+)\.(\d+)\.(\d+)/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+export function isNodeVersionCompatible(version = process.versions.node) {
+  const actual = parseNodeVersion(version);
+  if (!actual || !MINIMUM_NODE_VERSION) return false;
+  for (let index = 0; index < actual.length; index += 1) {
+    if (actual[index] > MINIMUM_NODE_VERSION[index]) return true;
+    if (actual[index] < MINIMUM_NODE_VERSION[index]) return false;
+  }
+  return true;
 }
 
 function parseExternalUrl(value, name) {
@@ -51,6 +74,11 @@ function validateExternalUrls(rawEnv, config, errors) {
     if (error) addError(errors, error);
   }
 
+  const sentryDsn = rawEnv.SENTRY_DSN;
+  if (sentryDsn && sentryDsn.trim() !== '' && !isValidSentryDsn(sentryDsn)) {
+    addError(errors, 'SENTRY_DSN must be a valid HTTPS Sentry DSN without a password');
+  }
+
   const origins = Array.isArray(config?.CORS_ORIGINS) ? config.CORS_ORIGINS : [];
   for (const origin of origins) {
     const error = parseExternalUrl(origin, 'CORS_ORIGINS');
@@ -64,6 +92,16 @@ function validateReleaseFlags(config, errors) {
       addError(errors, `${name} must be false for this production release`);
     }
   }
+
+  if (config?.ENABLE_EXTERNAL_IMAGE_URLS !== false) {
+    addError(errors, 'ENABLE_EXTERNAL_IMAGE_URLS must be false for this production release');
+  }
+}
+
+function rejectUnsafePlaceholders(rawEnv, errors) {
+  if (Object.values(rawEnv).some(value => typeof value === 'string' && value.includes('CHANGE_ME'))) {
+    addError(errors, 'production environment values must not contain CHANGE_ME');
+  }
 }
 
 /**
@@ -71,12 +109,20 @@ function validateReleaseFlags(config, errors) {
  * Returns structured errors so unit tests and deployment tooling can consume
  * the result without parsing console output.
  */
-export function validateProductionEnvironment(rawEnv = process.env) {
+export function validateProductionEnvironment(rawEnv = process.env, { nodeVersion = process.versions.node } = {}) {
   const errors = [];
   let config;
 
+  if (rawEnv.NODE_ENV !== 'production') {
+    addError(errors, 'NODE_ENV must be exactly production');
+  }
+  if (!isNodeVersionCompatible(nodeVersion)) {
+    addError(errors, `Node.js ${nodeVersion} is incompatible; project requires ${NODE_ENGINE}`);
+  }
+  rejectUnsafePlaceholders(rawEnv, errors);
+
   try {
-    config = loadConfig({ ...rawEnv, NODE_ENV: 'production' });
+    config = loadConfig(rawEnv);
   } catch (error) {
     addError(errors, error?.message || 'invalid production configuration');
     return { ok: false, config: null, errors };

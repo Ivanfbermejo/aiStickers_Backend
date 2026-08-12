@@ -1,6 +1,7 @@
 import { env } from '../../config/env.js';
 import { getLogger } from './logger.js';
 import { scrub, scrubString } from './scrub.js';
+import { isValidSentryDsn } from './sentry-dsn.js';
 
 let sentry;
 let initialized = false;
@@ -10,10 +11,6 @@ function scrubSentryEvent(event) {
   return scrub(event);
 }
 
-function validateSentryDsn(dsn) {
-  return /^https?:\/\/[^/\s]+@[^/\s]+\/\d+\/?$/.test(dsn);
-}
-
 export async function initErrorTracker() {
   if (!env.ERROR_TRACKING_ENABLED) {
     return;
@@ -21,7 +18,7 @@ export async function initErrorTracker() {
   if (!env.SENTRY_DSN) {
     throw new Error('Error tracking is enabled but SENTRY_DSN is not configured');
   }
-  if (!validateSentryDsn(env.SENTRY_DSN)) {
+  if (!isValidSentryDsn(env.SENTRY_DSN)) {
     throw new Error('SENTRY_DSN appears to be invalid');
   }
   try {

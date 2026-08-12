@@ -48,6 +48,13 @@ describe('error-tracker', () => {
     await expect(initErrorTracker()).rejects.toThrow(/invalid/i);
   });
 
+  it('throws when SENTRY_DSN contains a URL password', async () => {
+    process.env.ERROR_TRACKING_ENABLED = 'true';
+    process.env.SENTRY_DSN = 'https://public:password@sentry.example.com/1';
+    const { initErrorTracker } = await importErrorTracker();
+    await expect(initErrorTracker()).rejects.toThrow(/invalid/i);
+  });
+
   it('initializes Sentry and scrubs sensitive context before captureException', async () => {
     process.env.ERROR_TRACKING_ENABLED = 'true';
     process.env.SENTRY_DSN = 'https://public@sentry.example.com/1';

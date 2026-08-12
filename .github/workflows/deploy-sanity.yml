@@ -13,6 +13,7 @@ env:
   CLIENT_ID: ai-stickers-test
   TELEGRAM_BOT_TOKEN: test-token
   DATA_DIR: ./tmp-data
+  IMAGE_TAG: t11b-sanity
 
 jobs:
   sanity:
@@ -29,9 +30,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Run tests
-        run: npm test
 
       - name: Run security scan
         run: node scripts/security-scan.js
@@ -62,7 +60,7 @@ jobs:
           GOOGLE_CLIENT_ID: preflight-google-client
           GOOGLE_CLIENT_SECRET: preflight-google-client-secret
           GOOGLE_PACKAGE_NAME: com.animatedsticker.aistickers
-          GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account"}'
+          GOOGLE_PLAY_SERVICE_ACCOUNT: '{"type":"service_account","project_id":"preflight-project","client_email":"preflight@example.test","private_key":"preflight-private-key"}'
           REPLICATE_API_TOKEN: preflight-replicate-token
           REPLICATE_MODEL: google/nano-banana
           REPLICATE_IMG2VID_MODEL: bytedance/seedance-1-pro
@@ -94,6 +92,3 @@ jobs:
         with:
           name: deploy-sanity-npm-audit-report
           path: npm-audit.json
-
-      - name: Verify package.json start script and deploy sanity
-        run: node scripts/deploy-sanity-check.js

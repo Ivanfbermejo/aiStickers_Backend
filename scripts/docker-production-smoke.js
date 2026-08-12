@@ -55,7 +55,7 @@ const smokeEnv = {
   GOOGLE_CLIENT_ID: 'smoke-google-client',
   ['GOOGLE_CLIENT' + '_SECRET']: 'smoke-google-client-secret',
   GOOGLE_PACKAGE_NAME: 'com.animatedsticker.aistickers',
-  ['GOOGLE_PLAY_' + 'SERVICE_ACCOUNT']: '{"type":"service_account"}',
+  ['GOOGLE_PLAY_' + 'SERVICE_ACCOUNT']: '{"type":"service_account","project_id":"smoke-project","client_email":"smoke@example.test","private_key":"smoke-private-key"}',
   ['REPLICATE' + '_API_TOKEN']: 'smoke-replicate-token',
   REPLICATE_MODEL: 'google/nano-banana',
   REPLICATE_IMG2VID_MODEL: 'bytedance/seedance-1-pro',

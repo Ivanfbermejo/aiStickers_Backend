@@ -50,7 +50,12 @@ describe('buildConfig and validateEnv', () => {
     process.env.REPLICATE_API_TOKEN = 'replicate-token';
     process.env.REPLICATE_MODEL = 'google/nano-banana';
     process.env.REPLICATE_IMG2VID_MODEL = 'bytedance/seedance-1-pro';
-    process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account' });
+    process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({
+      type: 'service_account',
+      project_id: 'test-project',
+      client_email: 'test@example.test',
+      private_key: 'test-private-key'
+    });
     process.env.CORS_ORIGINS = 'https://app.example.com';
     process.env.PERSISTENCE_DRIVER = 'postgres';
     process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/aistickers';
@@ -162,6 +167,18 @@ describe('buildConfig and validateEnv', () => {
   it('production rejects an invalid GOOGLE_PLAY_SERVICE_ACCOUNT JSON', () => {
     const invalidServiceAccount = 'not-json';
     setProductionEnv({ GOOGLE_PLAY_SERVICE_ACCOUNT: invalidServiceAccount });
+    const config = buildConfig();
+    expect(() => validateEnv(config)).toThrow('GOOGLE_PLAY_SERVICE_ACCOUNT');
+  });
+
+  it('production rejects an incomplete GOOGLE_PLAY_SERVICE_ACCOUNT', () => {
+    setProductionEnv({
+      GOOGLE_PLAY_SERVICE_ACCOUNT: JSON.stringify({
+        type: 'service_account',
+        project_id: 'test-project',
+        client_email: 'test@example.test'
+      })
+    });
     const config = buildConfig();
     expect(() => validateEnv(config)).toThrow('GOOGLE_PLAY_SERVICE_ACCOUNT');
   });
