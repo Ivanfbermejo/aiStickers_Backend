@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 
 const TEST_JWT_SECRET = 'production-jwt-secret-with-32-chars-long!!';
 const TEST_CLIENT_SECRET = 'production-client-secret-32-chars-long!!';
+const originalEnv = { ...process.env };
 
 function setProductionEnv() {
   process.env.NODE_ENV = 'production';
@@ -35,12 +36,14 @@ function setProductionEnv() {
 
 describe('CORS in production', () => {
   it('allows a configured origin and rejects an unknown one', async () => {
-    setProductionEnv();
-
-    const { buildTestApp } = await import('../helpers/app.js');
-    const ctx = await buildTestApp();
+    let ctx;
 
     try {
+      setProductionEnv();
+      await vi.resetModules();
+      const { buildTestApp } = await import('../helpers/app.js');
+      ctx = await buildTestApp();
+
       const allowed = await request(ctx.app)
         .get('/health')
         .set('Origin', 'https://app.example.com');
@@ -52,7 +55,10 @@ describe('CORS in production', () => {
         .set('Origin', 'https://evil.example.com');
       expect(denied.status).toBe(500);
     } finally {
-      ctx.cleanup();
+      ctx?.cleanup();
+      Object.keys(process.env).forEach(key => delete process.env[key]);
+      Object.assign(process.env, originalEnv);
+      await vi.resetModules();
     }
   }, 30000);
 });
